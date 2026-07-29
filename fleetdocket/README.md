@@ -1,4 +1,4 @@
-# FleetBinder
+# FleetDocket
 
 DOT compliance management for small trucking fleets (5–50 trucks). Every
 driver, vehicle, and company has a checklist of dated requirements; the app

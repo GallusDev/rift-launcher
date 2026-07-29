@@ -1,4 +1,4 @@
-# FleetBinder — DOT Compliance SaaS for Small Trucking Fleets
+# FleetDocket — DOT Compliance SaaS for Small Trucking Fleets
 
 ## Context
 
@@ -66,7 +66,7 @@ Requirements live in a `requirement_catalog` **table, not code**: `applies_to` (
 
 ## Repo Logistics
 
-Working name **FleetBinder** (rename anytime). Per session constraints, code is developed on branch `claude/saas-app-ideation-4tysvo` of `GallusDev/rift-launcher` — the app will live in a top-level `fleetbinder/` directory there, with a recommendation to migrate to a dedicated repo before launch. First implementation step is Phase 0 scaffold plus this plan committed as `fleetbinder/PLAN.md`.
+Name decided: **FleetDocket** (fleetdocket.com — see BUSINESS.md for branding, costs, hosting, and legal posture). Per session constraints, code is developed on branch `claude/saas-app-ideation-4tysvo` of `GallusDev/rift-launcher` — the app lives in a top-level `fleetdocket/` directory there, with a recommendation to migrate to a dedicated repo before launch. Phase 0 (scaffold, core schema migration, CFR-cited catalog seed, CI) is complete; next is Phase 1 (auth + tenancy).
 
 ## Verification
 

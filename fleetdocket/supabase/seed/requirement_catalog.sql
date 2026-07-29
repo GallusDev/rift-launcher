@@ -110,7 +110,7 @@ values
 
   ('ifta_license',
    'IFTA license & decals',
-   'IFTA license and decals, renewed annually (calendar year). Tracking only — FleetBinder does not calculate IFTA.',
+   'IFTA license and decals, renewed annually (calendar year). Tracking only — FleetDocket does not calculate IFTA.',
    'IFTA (state program)', 'company', 'calendar_rule', null,
    '{"rule": "annual_fixed_date", "month": 12, "day": 31}', false, 340),
 

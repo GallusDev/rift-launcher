@@ -1,4 +1,4 @@
--- FleetBinder core schema: tenancy, subjects, requirement catalog, compliance
+-- FleetDocket core schema: tenancy, subjects, requirement catalog, compliance
 -- items, documents, driver upload links, alerting, and billing mirror.
 -- Every tenant table carries org_id and is protected by RLS; the service-role
 -- key (webhooks, cron, token-upload route) bypasses RLS by design.

@@ -3,7 +3,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center bg-slate-950 px-6 text-slate-100">
       <div className="max-w-2xl text-center">
         <p className="mb-4 text-sm font-semibold uppercase tracking-widest text-amber-400">
-          FleetBinder
+          FleetDocket
         </p>
         <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
           Your DOT audit is coming.

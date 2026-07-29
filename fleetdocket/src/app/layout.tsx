@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FleetBinder — DOT compliance for small fleets",
+  title: "FleetDocket — DOT compliance for small fleets",
   description:
     "Driver qualification files, expirations, and audit-ready binders for fleets of 5-50 trucks. No hardware, no telematics tax.",
 };

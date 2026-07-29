@@ -1,25 +1,25 @@
-name: FleetBinder CI
+name: FleetDocket CI
 
 on:
   push:
     branches: ["**"]
-    paths: ["fleetbinder/**", ".github/workflows/fleetbinder-ci.yml"]
+    paths: ["fleetdocket/**", ".github/workflows/fleetdocket-ci.yml"]
   pull_request:
-    paths: ["fleetbinder/**", ".github/workflows/fleetbinder-ci.yml"]
+    paths: ["fleetdocket/**", ".github/workflows/fleetdocket-ci.yml"]
 
 jobs:
   build:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: fleetbinder
+        working-directory: fleetdocket
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: fleetbinder/package-lock.json
+          cache-dependency-path: fleetdocket/package-lock.json
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm run lint
