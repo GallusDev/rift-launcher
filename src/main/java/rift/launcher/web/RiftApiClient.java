@@ -39,6 +39,42 @@ public final class RiftApiClient
 		return GSON.fromJson(reply.text(), License.class);
 	}
 
+	/**
+	 * {@code POST /api/v1/dev/verify} — checks a developer license key. The key <b>is</b> the auth here
+	 * (no Bearer token), so it goes in the body and nothing about it is ever logged.
+	 *
+	 * <p>A rejected key is a normal answer, not a failure: the website returns {@code 401 {valid:false}}
+	 * for an unknown/revoked key or a suspended developer, and this maps that to an invalid result. Only
+	 * a transport failure throws {@link IOException} — callers must treat that as "not a developer"
+	 * (fail closed) rather than granting developer mode on a network error.
+	 */
+	public DevLicense verifyDevLicense(String key) throws IOException
+	{
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Content-Type", "application/json");
+
+		JsonObject body = new JsonObject();
+		body.addProperty("key", key);
+
+		Http.Reply reply = http.send("POST", baseUrl + "/api/v1/dev/verify", headers,
+			GSON.toJson(body).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+		if (reply.status() / 100 != 2)
+		{
+			// 401 = not a valid developer key; 400 = malformed. Neither leaks detail, and neither is
+			// an error we surface differently -- both mean "no developer mode".
+			return DevLicense.invalid();
+		}
+		try
+		{
+			DevLicense license = GSON.fromJson(reply.text(), DevLicense.class);
+			return license == null ? DevLicense.invalid() : license;
+		}
+		catch (RuntimeException ex)
+		{
+			return DevLicense.invalid();
+		}
+	}
+
 	static ApiException toApiException(Http.Reply reply)
 	{
 		String code = null;

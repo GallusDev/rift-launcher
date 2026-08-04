@@ -20,6 +20,8 @@ import rift.launcher.ui.LauncherFrame;
 import rift.launcher.web.ApiException;
 import rift.launcher.web.AuthFlow;
 import rift.launcher.web.AuthStore;
+import rift.launcher.web.DevLicense;
+import rift.launcher.web.DevLicenseStore;
 import rift.launcher.web.JdkHttp;
 import rift.launcher.web.LaunchHandoff;
 import rift.launcher.web.License;
@@ -35,6 +37,7 @@ public class RiftLauncher
 	private static final File RIFT_DIR = new File(System.getProperty("user.home"), ".rift");
 	private static final File ACCOUNTS_FILE = new File(RIFT_DIR, "accounts.dat");
 	private static final File AUTH_FILE = new File(RIFT_DIR, "auth.dat");
+	private static final File DEV_LICENSE_FILE = new File(RIFT_DIR, "devlicense.dat");
 	private static final File CLIENT_JAR = new File(RIFT_DIR, "rift-client.jar");
 
 	/** How often the signed-in launcher re-checks the license, so a mid-session ban is reflected. */
@@ -52,6 +55,7 @@ public class RiftLauncher
 		new SupabaseAuth(RiftConfig.SUPABASE_URL, RiftConfig.SUPABASE_ANON_KEY, new JdkHttp()),
 		new AuthStore(AUTH_FILE, new DpapiCrypto()));
 	private static final RiftApiClient API = new RiftApiClient(RiftConfig.apiBaseUrl(), new JdkHttp());
+	private static final DevLicenseStore DEV_LICENSE = new DevLicenseStore(DEV_LICENSE_FILE, new DpapiCrypto());
 
 	public static void main(String[] args)
 	{
@@ -71,6 +75,8 @@ public class RiftLauncher
 			frame.setOnLaunch(account -> launchAccount(clientLauncher, frame, account));
 			frame.setOnSignIn(() -> signIn(frame));
 			frame.setOnSignOut(() -> signOut(frame));
+			frame.setOnVerifyDevKey(key -> verifyAndSaveDevKey(frame, key));
+			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
 			frame.setAccounts(store.load());
 			frame.setVisible(true);
 
@@ -205,7 +211,12 @@ public class RiftLauncher
 		AUTH_FLOW.signOut();
 		SESSION.set(null);
 		LICENSE.set(null);
+		// Forget the developer key too. It is standalone auth that isn't bound to the Supabase session,
+		// so leaving it behind would let the next account signed in on this machine inherit developer
+		// mode. The developer re-enters it after signing back in.
+		DEV_LICENSE.clear();
 		frame.setRiftAccount(null);
+		frame.setDevLicenseVerified(false, null, null);
 		frame.setStatus("Signed out - click Sign in to Rift to switch accounts");
 	}
 
@@ -220,6 +231,10 @@ public class RiftLauncher
 		SESSION.set(session);
 		String name = session.getUserName() == null ? "Rift account" : session.getUserName();
 		frame.setRiftAccount(name);
+
+		// Re-check any stored developer key now that we're signed in, so the developer section shows its
+		// true state (a key revoked since the last run reports as invalid instead of looking verified).
+		refreshStoredDevKey(frame);
 
 		try
 		{
@@ -239,6 +254,117 @@ public class RiftLauncher
 			LICENSE.set(null);
 			log.warn("License check failed after sign-in (signed in anyway)", ex);
 			frame.setStatus("Signed in as " + name + " - Rift server unreachable, license unverified");
+		}
+	}
+
+	/**
+	 * Verifies a key the developer just typed and, only if the server says it's live, stores it
+	 * (encrypted) for next time. A rejected key is never saved, so nothing invalid lingers on disk.
+	 */
+	private static void verifyAndSaveDevKey(LauncherFrame frame, String key)
+	{
+		new Thread(() ->
+		{
+			frame.setDevControlsEnabled(false);
+			try
+			{
+				DevLicense license = API.verifyDevLicense(key);
+				if (!license.isValid())
+				{
+					frame.setDevLicenseVerified(false, null, null);
+					frame.setDevStatus("Key rejected - not an active developer key");
+					return;
+				}
+				DEV_LICENSE.save(key);
+				frame.setDevLicenseVerified(true, DevLicenseStore.mask(key), license.getTier());
+			}
+			catch (Exception ex)
+			{
+				// Fail closed: an unreachable server must not unlock developer mode.
+				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevStatus("Could not reach the Rift server - key not verified");
+				log.warn("Developer license verify failed ({})", ex.getClass().getSimpleName());
+			}
+			finally
+			{
+				frame.setDevControlsEnabled(true);
+			}
+		}, "rift-devkey-verify").start();
+	}
+
+	/** Forgets the stored key and drops developer mode. */
+	private static void removeDevKey(LauncherFrame frame)
+	{
+		DEV_LICENSE.clear();
+		frame.setDevLicenseVerified(false, null, null);
+		frame.setDevStatus("Developer key removed");
+	}
+
+	/**
+	 * Re-checks a previously stored key (on sign-in / resume) so the UI reflects reality: a key revoked
+	 * since last launch shows as rejected rather than silently staying "verified".
+	 */
+	private static void refreshStoredDevKey(LauncherFrame frame)
+	{
+		String key = DEV_LICENSE.load();
+		if (key == null)
+		{
+			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevStatus("No developer key");
+			return;
+		}
+		try
+		{
+			DevLicense license = API.verifyDevLicense(key);
+			if (license.isValid())
+			{
+				frame.setDevLicenseVerified(true, DevLicenseStore.mask(key), license.getTier());
+			}
+			else
+			{
+				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevStatus("Stored developer key is no longer valid (revoked or regenerated)");
+			}
+		}
+		catch (Exception ex)
+		{
+			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevStatus("Could not verify developer key - Rift server unreachable");
+		}
+	}
+
+	/**
+	 * The launch-time developer gate. Re-verifies the stored key on every launch rather than trusting
+	 * the earlier check, so revoking a key takes effect on the very next launch. Returns false — plain
+	 * standard mode — for no key, a rejected key, or an unreachable server.
+	 */
+	private static boolean developerModeForLaunch(LauncherFrame frame)
+	{
+		if (!frame.isDeveloperModeRequested())
+		{
+			return false;
+		}
+		String key = DEV_LICENSE.load();
+		if (key == null)
+		{
+			return false;
+		}
+		try
+		{
+			DevLicense license = API.verifyDevLicense(key);
+			if (license.isValid())
+			{
+				return true;
+			}
+			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevStatus("Developer key rejected - launching in standard mode");
+			return false;
+		}
+		catch (Exception ex)
+		{
+			frame.setDevStatus("Could not verify developer key - launching in standard mode");
+			log.warn("Developer license re-verify failed at launch ({})", ex.getClass().getSimpleName());
+			return false;
 		}
 	}
 
@@ -320,8 +446,11 @@ public class RiftLauncher
 			{
 				JxCredentials creds = credentialsFor(account);
 				File javaw = new File(System.getProperty("java.home"), "bin/javaw.exe");
-				Process process = launchWithSession(clientLauncher, creds, javaw);
-				frame.setAccountStatus(characterId, "Playing");
+				// Gate developer mode per launch: the key is re-verified here, so revoking it takes
+				// effect on the next launch rather than whenever the launcher happens to restart.
+				boolean developerMode = developerModeForLaunch(frame);
+				Process process = launchWithSession(clientLauncher, creds, javaw, developerMode);
+				frame.setAccountStatus(characterId, developerMode ? "Playing (dev)" : "Playing");
 				process.waitFor();
 				frame.setAccountStatus(characterId, "Ready");
 			}
@@ -343,8 +472,8 @@ public class RiftLauncher
 	 * Launches with a fresh Rift session handed off over stdin when signed in, else a plain Jagex-only
 	 * launch. Refreshes the access token first so the client starts with a full-lifetime token.
 	 */
-	private static Process launchWithSession(ClientLauncher clientLauncher, JxCredentials creds, File javaw)
-		throws Exception
+	private static Process launchWithSession(ClientLauncher clientLauncher, JxCredentials creds, File javaw,
+		boolean developerMode) throws Exception
 	{
 		if (SESSION.get() != null)
 		{
@@ -356,7 +485,7 @@ public class RiftLauncher
 					SESSION.set(fresh);
 					String handoff = new LaunchHandoff(fresh.getAccessToken(), fresh.getRefreshToken(),
 						fresh.getExpiresAt(), RiftConfig.apiBaseUrl(), RiftConfig.SUPABASE_ANON_KEY,
-						RiftConfig.SUPABASE_URL).toJson();
+						RiftConfig.SUPABASE_URL, developerMode).toJson();
 					return clientLauncher.launch(creds, handoff, javaw, CLIENT_JAR);
 				}
 			}
