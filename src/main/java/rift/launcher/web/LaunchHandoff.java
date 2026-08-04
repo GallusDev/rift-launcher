@@ -30,8 +30,22 @@ public final class LaunchHandoff
 	@SerializedName("supabase_url")
 	private final String supabaseUrl;
 
+	/**
+	 * Whether the client may load local developer plugins. Set only after the launcher has verified a
+	 * developer license key against {@code /api/v1/dev/verify} for this launch. Deliberately a plain
+	 * boolean: the key itself never enters the client process, so it can't leak from there.
+	 */
+	@SerializedName("developer_mode")
+	private final boolean developerMode;
+
 	public LaunchHandoff(String accessToken, String refreshToken, long expiresAt, String baseUrl,
 		String anonKey, String supabaseUrl)
+	{
+		this(accessToken, refreshToken, expiresAt, baseUrl, anonKey, supabaseUrl, false);
+	}
+
+	public LaunchHandoff(String accessToken, String refreshToken, long expiresAt, String baseUrl,
+		String anonKey, String supabaseUrl, boolean developerMode)
 	{
 		this.accessToken = accessToken;
 		this.refreshToken = refreshToken;
@@ -39,6 +53,7 @@ public final class LaunchHandoff
 		this.baseUrl = baseUrl;
 		this.anonKey = anonKey;
 		this.supabaseUrl = supabaseUrl;
+		this.developerMode = developerMode;
 	}
 
 	/** A single-line JSON string suitable for writing to the client's stdin. */

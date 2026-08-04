@@ -7,11 +7,14 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import javax.swing.BorderFactory;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
@@ -29,6 +32,16 @@ public class LauncherFrame extends JFrame
 	private Consumer<Account> onLaunch = account -> { };
 	private Runnable onSignIn = () -> { };
 	private Runnable onSignOut = () -> { };
+
+	// Developer section: entering a valid, unrevoked license key is what unlocks developer mode.
+	private final JPanel devPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+	private final JPasswordField devKeyField = new JPasswordField(26);
+	private final JButton devVerifyButton = new JButton("Verify & save");
+	private final JButton devRemoveButton = new JButton("Remove");
+	private final JCheckBox devModeBox = new JCheckBox("Launch in developer mode");
+	private final JLabel devStatusLabel = new JLabel("No developer key");
+	private Consumer<String> onVerifyDevKey = key -> { };
+	private Runnable onRemoveDevKey = () -> { };
 
 	public LauncherFrame()
 	{
@@ -78,12 +91,99 @@ public class LauncherFrame extends JFrame
 			onLaunch.accept(account);
 		});
 
-		JPanel bottom = new JPanel(new FlowLayout(FlowLayout.LEFT));
-		bottom.add(launch);
-		bottom.add(status);
+		// Developer key row. Hidden until signed in, since a key is only meaningful for a Rift account.
+		devPanel.setBorder(BorderFactory.createTitledBorder("Developer"));
+		devKeyField.setToolTipText("Your rift_dev_... license key from the developer dashboard");
+		devVerifyButton.addActionListener(e ->
+		{
+			char[] chars = devKeyField.getPassword();
+			String key = new String(chars).trim();
+			java.util.Arrays.fill(chars, '\0');
+			if (key.isEmpty())
+			{
+				setDevStatus("Enter your developer license key first");
+				return;
+			}
+			onVerifyDevKey.accept(key);
+		});
+		devRemoveButton.addActionListener(e -> onRemoveDevKey.run());
+		// Developer mode stays locked until a key actually verifies.
+		devModeBox.setEnabled(false);
+		devPanel.add(new JLabel("License key:"));
+		devPanel.add(devKeyField);
+		devPanel.add(devVerifyButton);
+		devPanel.add(devRemoveButton);
+		devPanel.add(devModeBox);
+		devPanel.add(devStatusLabel);
+		devPanel.setVisible(false);
+
+		JPanel bottom = new JPanel(new BorderLayout());
+		JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		launchRow.add(launch);
+		launchRow.add(status);
+		bottom.add(devPanel, BorderLayout.NORTH);
+		bottom.add(launchRow, BorderLayout.SOUTH);
 
 		add(new JScrollPane(table), BorderLayout.CENTER);
 		add(bottom, BorderLayout.SOUTH);
+	}
+
+	public void setOnVerifyDevKey(Consumer<String> onVerifyDevKey)
+	{
+		this.onVerifyDevKey = onVerifyDevKey;
+	}
+
+	public void setOnRemoveDevKey(Runnable onRemoveDevKey)
+	{
+		this.onRemoveDevKey = onRemoveDevKey;
+	}
+
+	/** Whether the user asked for a developer-mode launch. Only meaningful when a key has verified. */
+	public boolean isDeveloperModeRequested()
+	{
+		return devModeBox.isEnabled() && devModeBox.isSelected();
+	}
+
+	/** Shows/hides the whole developer section — only signed-in users can hold a developer key. */
+	public void setDeveloperSectionVisible(boolean visible)
+	{
+		SwingUtilities.invokeLater(() -> devPanel.setVisible(visible));
+	}
+
+	/**
+	 * Reflects the verified state of the stored key. A valid key unlocks (and does not auto-select) the
+	 * developer-mode checkbox; anything else locks and clears it, so a revoked key can't leave developer
+	 * mode armed.
+	 */
+	public void setDevLicenseVerified(boolean valid, String maskedKey, String tier)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			devModeBox.setEnabled(valid);
+			if (valid)
+			{
+				devKeyField.setText("");
+				devStatusLabel.setText(maskedKey + (tier == null ? "" : "  (" + tier + ")") + " - verified");
+			}
+			else
+			{
+				devModeBox.setSelected(false);
+			}
+		});
+	}
+
+	public void setDevStatus(String text)
+	{
+		SwingUtilities.invokeLater(() -> devStatusLabel.setText(text));
+	}
+
+	public void setDevControlsEnabled(boolean enabled)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			devVerifyButton.setEnabled(enabled);
+			devRemoveButton.setEnabled(enabled);
+		});
 	}
 
 	/** The Rift logo at several sizes, for the title-bar and taskbar icon. */
@@ -131,6 +231,15 @@ public class LauncherFrame extends JFrame
 			{
 				riftAccountLabel.setText("Rift: not signed in");
 				riftAuthButton.setText("Sign in to Rift");
+			}
+			// Signing out must also drop developer mode, so the next user can't inherit it.
+			devPanel.setVisible(signedIn);
+			if (!signedIn)
+			{
+				devModeBox.setSelected(false);
+				devModeBox.setEnabled(false);
+				devKeyField.setText("");
+				devStatusLabel.setText("No developer key");
 			}
 		});
 	}
