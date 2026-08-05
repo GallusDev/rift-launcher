@@ -21,7 +21,9 @@ public final class AccountImporter
 		{
 			displayName = characterId;
 		}
-		return new Account(characterId, displayName, sessionId, now);
+		// No proxy on import: an account starts connecting directly until one is assigned. Re-importing
+		// an existing account must not silently clear an assignment, so callers merge rather than replace.
+		return new Account(characterId, displayName, sessionId, now, null);
 	}
 
 	private static String require(Map<String, String> env, String key)

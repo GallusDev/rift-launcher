@@ -47,7 +47,7 @@ public class AccountStoreTest
 		File f = new File(folder.getRoot(), "accounts.dat");
 		AccountStore store = new AccountStore(f, XOR);
 
-		Account a = new Account("char-1", "Zezima", "sess-abc", 111L);
+		Account a = new Account("char-1", "Zezima", "sess-abc", 111L, null);
 		store.save(Collections.singletonList(a));
 
 		List<Account> loaded = store.load();
@@ -62,7 +62,7 @@ public class AccountStoreTest
 	{
 		File f = new File(folder.getRoot(), "accounts.dat");
 		AccountStore store = new AccountStore(f, XOR);
-		store.save(Collections.singletonList(new Account("c", "d", "sess-SECRET", 1L)));
+		store.save(Collections.singletonList(new Account("c", "d", "sess-SECRET", 1L, null)));
 
 		byte[] raw = Files.readAllBytes(f.toPath());
 		assertTrue(f.exists());

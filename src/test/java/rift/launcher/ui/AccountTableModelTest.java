@@ -19,8 +19,8 @@ public class AccountTableModelTest
 	{
 		AccountTableModel model = new AccountTableModel();
 		model.setAccounts(Arrays.asList(
-			new Account("c1", "Zezima", "s1", 1L),
-			new Account("c2", "Durial", "s2", 2L)));
+			new Account("c1", "Zezima", "s1", 1L, null),
+			new Account("c2", "Durial", "s2", 2L, null)));
 
 		assertEquals(2, model.getRowCount());
 		assertEquals(4, model.getColumnCount());
@@ -37,7 +37,7 @@ public class AccountTableModelTest
 	public void onlyTheLaunchColumnIsEditable()
 	{
 		AccountTableModel model = new AccountTableModel();
-		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L)));
+		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L, null)));
 
 		// Editability is how Swing routes a click to the button cell editor; the data columns must
 		// stay read-only so a stray double-click can't turn an account name into a text field.
@@ -52,8 +52,8 @@ public class AccountTableModelTest
 	{
 		AccountTableModel model = new AccountTableModel(() -> NOW);
 		model.setAccounts(Arrays.asList(
-			new Account("c1", "Zezima", "s1", NOW - (26 * HOUR)),
-			new Account("c2", "Durial", "s2", NOW - (5 * MINUTE))));
+			new Account("c1", "Zezima", "s1", NOW - (26 * HOUR), null),
+			new Account("c2", "Durial", "s2", NOW - (5 * MINUTE), null)));
 
 		assertEquals("1d 2h", model.getValueAt(0, 2));
 		assertEquals("5m", model.getValueAt(1, 2));
@@ -83,7 +83,7 @@ public class AccountTableModelTest
 	public void setStatusUpdatesTheRow()
 	{
 		AccountTableModel model = new AccountTableModel();
-		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L)));
+		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L, null)));
 		model.setStatus("c1", "Playing");
 		assertEquals("Playing", model.getValueAt(0, 1));
 	}
@@ -92,7 +92,7 @@ public class AccountTableModelTest
 	public void accountAtReturnsRow()
 	{
 		AccountTableModel model = new AccountTableModel();
-		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L)));
+		model.setAccounts(Arrays.asList(new Account("c1", "Zezima", "s1", 1L, null)));
 		assertEquals("c1", model.accountAt(0).getCharacterId());
 	}
 }

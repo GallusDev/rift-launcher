@@ -10,7 +10,7 @@ public class RiftLauncherTest
 	@Test
 	public void credentialsForMapsStoredAccountToJxVars()
 	{
-		Account account = new Account("char-1", "Zezima", "sess-9", 1L);
+		Account account = new Account("char-1", "Zezima", "sess-9", 1L, null);
 		JxCredentials creds = RiftLauncher.credentialsFor(account);
 		assertEquals("sess-9", creds.getSessionId());
 		assertEquals("char-1", creds.getCharacterId());
