@@ -35,6 +35,17 @@ public final class Release
 	@SerializedName("size_bytes")
 	private Long sizeBytes;
 
+	/** Test seam: production instances always come from Gson, which sets the fields directly. */
+	static Release forTest(String id, String version, String sha256, Long sizeBytes)
+	{
+		Release r = new Release();
+		r.id = id;
+		r.version = version;
+		r.sha256 = sha256;
+		r.sizeBytes = sizeBytes;
+		return r;
+	}
+
 	public String getId()
 	{
 		return id;

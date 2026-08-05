@@ -9,6 +9,7 @@ import static org.junit.Assert.assertTrue;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
+import rift.launcher.web.ReleaseTestFactory;
 
 public class UpdateServiceTest
 {
@@ -45,6 +46,48 @@ public class UpdateServiceTest
 
 		assertTrue(target.isFile());
 		assertEquals("fresh", new String(Files.readAllBytes(target.toPath()), StandardCharsets.UTF_8));
+	}
+
+	@Test
+	public void verifyAcceptsAMatchingChecksum()
+	{
+		byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
+		String hash = UpdateService.sha256Hex(bytes);
+
+		assertTrue(UpdateService.verify(bytes,
+			ReleaseTestFactory.release("id", "1.0.0", hash, (long) bytes.length), "client"));
+		// Case must not matter -- the server publishes lowercase hex, but that is not ours to assume.
+		assertTrue(UpdateService.verify(bytes,
+			ReleaseTestFactory.release("id", "1.0.0", hash.toUpperCase(), null), "client"));
+	}
+
+	@Test
+	public void verifyRefusesAMissingChecksum()
+	{
+		byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
+
+		// A hard gate: what we install gets executed, so an unverifiable download is never accepted.
+		assertFalse(UpdateService.verify(bytes,
+			ReleaseTestFactory.release("id", "1.0.0", null, null), "launcher"));
+		assertFalse(UpdateService.verify(bytes,
+			ReleaseTestFactory.release("id", "1.0.0", "", null), "launcher"));
+	}
+
+	@Test
+	public void verifyRefusesTamperedOrTruncatedDownloads()
+	{
+		byte[] bytes = "payload".getBytes(StandardCharsets.UTF_8);
+		String hash = UpdateService.sha256Hex(bytes);
+
+		// Wrong content.
+		assertFalse(UpdateService.verify("tampered".getBytes(StandardCharsets.UTF_8),
+			ReleaseTestFactory.release("id", "1.0.0", hash, null), "client"));
+		// Right content, wrong length: caught before the hash is even computed.
+		assertFalse(UpdateService.verify(bytes,
+			ReleaseTestFactory.release("id", "1.0.0", hash, 999L), "client"));
+		// Nothing at all.
+		assertFalse(UpdateService.verify(new byte[0],
+			ReleaseTestFactory.release("id", "1.0.0", hash, null), "client"));
 	}
 
 	@Test

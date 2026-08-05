@@ -199,14 +199,15 @@ public class UpdateService
 	}
 
 	/**
-	 * Verifies a download against the release's {@code sha256}.
+	 * Verifies a download against the release's {@code sha256}. A hard gate: anything that does not
+	 * verify is refused, and the working install is left alone.
 	 *
-	 * <p>The server does not publish checksums yet, so an absent hash cannot be treated as a failure
-	 * without disabling updates entirely. It is logged loudly instead: transport is HTTPS, but that
-	 * only protects the wire, not a corrupted or swapped storage object. Once the server publishes
-	 * {@code sha256} this becomes a hard gate.
+	 * <p>An absent hash is a failure, not a warning. HTTPS protects the wire but not a corrupted,
+	 * truncated or swapped storage object, and what we are about to put in place gets executed. The
+	 * website publishes {@code sha256} on every release (migration 0012), so a release without one is
+	 * either mispublished or not what it claims to be — either way it is not something to install.
 	 */
-	private boolean verify(byte[] bytes, Release release, String what)
+	static boolean verify(byte[] bytes, Release release, String what)
 	{
 		if (bytes == null || bytes.length == 0)
 		{
@@ -223,11 +224,16 @@ public class UpdateService
 		String expected = release.getSha256();
 		if (expected == null || expected.isEmpty())
 		{
-			log.warn("Rift: {} release {} publishes no sha256 - installing an unverified download",
-				what, release.getVersion());
-			return true;
+			log.warn("Rift: refusing {} release {} - it publishes no sha256, so the download cannot be "
+				+ "verified", what, release.getVersion());
+			return false;
 		}
-		return expected.equalsIgnoreCase(sha256Hex(bytes));
+		if (!expected.equalsIgnoreCase(sha256Hex(bytes)))
+		{
+			log.warn("Rift: refusing {} release {} - sha256 mismatch", what, release.getVersion());
+			return false;
+		}
+		return true;
 	}
 
 	static String sha256Hex(byte[] bytes)
