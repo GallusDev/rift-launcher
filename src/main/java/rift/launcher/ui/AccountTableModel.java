@@ -10,7 +10,9 @@ import rift.launcher.account.Account;
 
 public class AccountTableModel extends AbstractTableModel
 {
-	private static final String[] COLUMNS = {"Name", "Status", "Session age"};
+	/** The trailing column holds a per-row Launch button rather than text. */
+	private static final String[] COLUMNS = {"Name", "Status", "Session age", "Launch"};
+	public static final int LAUNCH_COLUMN = 3;
 	private static final String DEFAULT_STATUS = "Ready";
 	private static final long MINUTE_MS = 60_000L;
 
@@ -84,9 +86,18 @@ public class AccountTableModel extends AbstractTableModel
 				return statuses.getOrDefault(a.getCharacterId(), DEFAULT_STATUS);
 			case 2:
 				return formatAge(clock.getAsLong() - a.getAddedAt());
+			case LAUNCH_COLUMN:
+				return "Launch";
 			default:
 				return "";
 		}
+	}
+
+	/** Only the Launch column is "editable" — that is how Swing routes clicks to a cell editor. */
+	@Override
+	public boolean isCellEditable(int row, int column)
+	{
+		return column == LAUNCH_COLUMN;
 	}
 
 	/** Repaints the rows so the session-age column keeps up with the clock. */
