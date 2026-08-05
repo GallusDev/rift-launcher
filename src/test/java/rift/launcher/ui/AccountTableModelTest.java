@@ -15,6 +15,49 @@ public class AccountTableModelTest
 	private static final long DAY = 24 * HOUR;
 
 	@Test
+	public void assignedProxyIsShownByNickname()
+	{
+		AccountTableModel model = new AccountTableModel();
+		rift.launcher.proxy.ProxyEntry proxy =
+			new rift.launcher.proxy.ProxyEntry("home", "1.2.3.4", 1080, null, null);
+		proxy.setId("p1");
+		model.setProxies(java.util.Collections.singletonList(proxy));
+		model.setAccounts(Arrays.asList(
+			new Account("c1", "Zezima", "s1", 1L, "p1"),
+			new Account("c2", "Durial", "s2", 2L, null)));
+
+		assertEquals("home", model.getValueAt(0, AccountTableModel.PROXY_COLUMN));
+		assertEquals(AccountTableModel.NO_PROXY, model.getValueAt(1, AccountTableModel.PROXY_COLUMN));
+	}
+
+	@Test
+	public void deletedProxyReadsAsMissingNotDirect()
+	{
+		AccountTableModel model = new AccountTableModel();
+		model.setAccounts(java.util.Collections.singletonList(
+			new Account("c1", "Zezima", "s1", 1L, "deleted-id")));
+
+		// Showing "Direct" would hide why the launch refuses -- the account is assigned to a proxy
+		// that no longer exists, and connecting directly is exactly what the user did not ask for.
+		assertEquals("(missing)", model.getValueAt(0, AccountTableModel.PROXY_COLUMN));
+	}
+
+	@Test
+	public void proxyChoicesOfferDirectPlusEverySavedProxy()
+	{
+		AccountTableModel model = new AccountTableModel();
+		rift.launcher.proxy.ProxyEntry a = new rift.launcher.proxy.ProxyEntry("a", "1.1.1.1", 1080, null, null);
+		a.setId("id-a");
+		model.setProxies(java.util.Collections.singletonList(a));
+
+		assertEquals(2, model.proxyChoices().length);
+		assertEquals(AccountTableModel.NO_PROXY, model.proxyChoices()[0]);
+		assertEquals("a", model.proxyChoices()[1]);
+		assertEquals("id-a", model.proxyIdForChoice("a"));
+		assertEquals(null, model.proxyIdForChoice(AccountTableModel.NO_PROXY));
+	}
+
+	@Test
 	public void exposesNameStatusAndSessionAgeColumns()
 	{
 		AccountTableModel model = new AccountTableModel();
@@ -23,13 +66,16 @@ public class AccountTableModelTest
 			new Account("c2", "Durial", "s2", 2L, null)));
 
 		assertEquals(2, model.getRowCount());
-		assertEquals(4, model.getColumnCount());
+		assertEquals(5, model.getColumnCount());
 		assertEquals("Name", model.getColumnName(0));
 		assertEquals("Status", model.getColumnName(1));
 		assertEquals("Session age", model.getColumnName(2));
+		assertEquals("Proxy", model.getColumnName(AccountTableModel.PROXY_COLUMN));
 		assertEquals("Launch", model.getColumnName(AccountTableModel.LAUNCH_COLUMN));
 		assertEquals("Zezima", model.getValueAt(0, 0));
 		assertEquals("Ready", model.getValueAt(0, 1));
+		// An account with no proxy connects directly.
+		assertEquals(AccountTableModel.NO_PROXY, model.getValueAt(0, AccountTableModel.PROXY_COLUMN));
 		assertEquals("Launch", model.getValueAt(0, AccountTableModel.LAUNCH_COLUMN));
 	}
 
