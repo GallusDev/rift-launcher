@@ -7,6 +7,7 @@ import java.util.Arrays;
 import rift.shim.ShimConfig;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import org.junit.Before;
 import org.junit.Rule;
@@ -71,6 +72,44 @@ public class JagexIntegrationTest
 		assertEquals("net.runelite.launcher.Launcher", shim.getRuneLiteMainClass());
 		assertEquals(Arrays.asList("-Xmx768m"), shim.getRuneLiteVmArgs());
 		assertTrue(shim.getJavaExe().endsWith("javaw.exe"));
+	}
+
+	@Test
+	public void vortexIsNotOfferedWhenItIsNotInstalled() throws Exception
+	{
+		File noVortex = new File(tmp.getRoot(), "no-vortex-here");
+		new JagexIntegration(runeLiteDir, riftDir, noVortex).apply();
+
+		ShimConfig shim = ShimConfig.load(new File(riftDir, "shim.json"));
+		// Null paths are what make the chooser render two buttons instead of three.
+		assertNull(shim.getVortexExe());
+		assertNull(shim.getVortexJar());
+	}
+
+	@Test
+	public void vortexIsOfferedOnlyWhenBothOfItsFilesExist() throws Exception
+	{
+		File vortexDir = tmp.newFolder("Vortex");
+		File exe = new File(vortexDir, "jre/bin/vortex-launcher.exe");
+		File jar = new File(vortexDir, "bin/vortex-launcher.jar");
+		//noinspection ResultOfMethodCallIgnored
+		exe.getParentFile().mkdirs();
+		Files.write(exe.toPath(), new byte[]{0});
+
+		// Only the exe present: a half-install must not be advertised.
+		new JagexIntegration(runeLiteDir, riftDir, vortexDir).apply();
+		assertNull(ShimConfig.load(new File(riftDir, "shim.json")).getVortexExe());
+
+		//noinspection ResultOfMethodCallIgnored
+		jar.getParentFile().mkdirs();
+		Files.write(jar.toPath(), new byte[]{0});
+		// Re-record: apply() only rewrites shim.json while the config is not already redirected.
+		new JagexIntegration(runeLiteDir, riftDir, vortexDir).restore();
+		new JagexIntegration(runeLiteDir, riftDir, vortexDir).apply();
+
+		ShimConfig shim = ShimConfig.load(new File(riftDir, "shim.json"));
+		assertTrue(shim.getVortexExe().endsWith("vortex-launcher.exe"));
+		assertTrue(shim.getVortexJar().endsWith("vortex-launcher.jar"));
 	}
 
 	@Test

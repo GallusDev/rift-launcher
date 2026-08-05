@@ -31,13 +31,24 @@ public class JagexIntegration
 		REVERTED
 	}
 
+	/** Where Vortex installs by default. Only used to decide whether to offer it in the chooser. */
+	private static final File DEFAULT_VORTEX_DIR = new File("C:/Program Files/Vortex");
+
 	private final File runeLiteDir;
 	private final File riftDir;
+	private final File vortexDir;
 
 	public JagexIntegration(File runeLiteDir, File riftDir)
 	{
+		this(runeLiteDir, riftDir, DEFAULT_VORTEX_DIR);
+	}
+
+	/** Overload taking the Vortex location so the detection can be exercised in tests. */
+	JagexIntegration(File runeLiteDir, File riftDir, File vortexDir)
+	{
 		this.runeLiteDir = runeLiteDir;
 		this.riftDir = riftDir;
+		this.vortexDir = vortexDir;
 	}
 
 	/** The standard install location the Jagex Launcher uses for the RuneLite client. */
@@ -134,9 +145,9 @@ public class JagexIntegration
 		shim.setRuneLiteVmArgs(original.getVmArgs());
 
 		// Optional convenience only: if Vortex is already installed, offer it in the chooser too. Rift
-		// never requires Vortex — when it is absent the chooser simply shows two buttons.
-		File vortexExe = new File("C:/Program Files/Vortex/jre/bin/vortex-launcher.exe");
-		File vortexJar = new File("C:/Program Files/Vortex/bin/vortex-launcher.jar");
+		// never requires Vortex — when it is absent these stay null and the chooser shows two buttons.
+		File vortexExe = new File(vortexDir, "jre/bin/vortex-launcher.exe");
+		File vortexJar = new File(vortexDir, "bin/vortex-launcher.jar");
 		if (vortexExe.isFile() && vortexJar.isFile())
 		{
 			shim.setVortexExe(vortexExe.getAbsolutePath());
