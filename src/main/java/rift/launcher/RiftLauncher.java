@@ -23,6 +23,7 @@ import rift.launcher.web.AuthStore;
 import rift.launcher.web.DevLicense;
 import rift.launcher.web.DevLicenseStore;
 import rift.launcher.web.JdkHttp;
+import rift.launcher.web.Jwt;
 import rift.launcher.web.LaunchHandoff;
 import rift.launcher.web.License;
 import rift.launcher.web.RiftApiClient;
@@ -107,6 +108,9 @@ public class RiftLauncher
 			{
 				bannedAndExit();
 			}
+			// Track developer status live, so losing it mid-session hides the section (and disarms
+			// developer mode) rather than waiting for the next sign-in.
+			frame.setDeveloperSectionVisible(license.isDeveloper());
 		}
 		catch (ApiException e)
 		{
@@ -245,6 +249,8 @@ public class RiftLauncher
 				bannedAndExit();
 				return;
 			}
+			// Only registered developers see the Developer section.
+			frame.setDeveloperSectionVisible(license.isDeveloper());
 			frame.setStatus("Signed in to Rift as " + name);
 		}
 		catch (Exception ex)
@@ -252,9 +258,30 @@ public class RiftLauncher
 			// Signed in, but couldn't verify the license (server unreachable / error). Non-fatal:
 			// keep the session; managed plugins simply won't resolve until the API is reachable.
 			LICENSE.set(null);
+			// Without a license answer we don't know if this account is a developer — keep it hidden.
+			frame.setDeveloperSectionVisible(false);
 			log.warn("License check failed after sign-in (signed in anyway)", ex);
 			frame.setStatus("Signed in as " + name + " - Rift server unreachable, license unverified");
 		}
+	}
+
+	/**
+	 * Whether a verified key belongs to the account currently signed in to the launcher.
+	 *
+	 * <p>The key is standalone auth — the server will happily confirm any live key, including one issued
+	 * to a different developer — so the launcher has to bind the two itself: the key's {@code
+	 * developer_id} is the owner's Supabase user id, which must equal the {@code sub} of the signed-in
+	 * session. Fails closed when either side is unknown.
+	 */
+	private static boolean keyBelongsToSignedInAccount(DevLicense license)
+	{
+		Session session = SESSION.get();
+		if (session == null || license == null || license.getDeveloperId() == null)
+		{
+			return false;
+		}
+		String signedInUserId = Jwt.subject(session.getAccessToken());
+		return signedInUserId != null && signedInUserId.equals(license.getDeveloperId());
 	}
 
 	/**
@@ -268,11 +295,20 @@ public class RiftLauncher
 			frame.setDevControlsEnabled(false);
 			try
 			{
-				DevLicense license = API.verifyDevLicense(key);
+				Session current = SESSION.get();
+				DevLicense license = API.verifyDevLicense(key,
+					current == null ? null : current.getAccessToken());
 				if (!license.isValid())
 				{
 					frame.setDevLicenseVerified(false, null, null);
 					frame.setDevStatus("Key rejected - not an active developer key");
+					return;
+				}
+				if (!keyBelongsToSignedInAccount(license))
+				{
+					// A live key, but issued to a different developer. Don't store it.
+					frame.setDevLicenseVerified(false, null, null);
+					frame.setDevStatus("That key belongs to a different Rift account");
 					return;
 				}
 				DEV_LICENSE.save(key);
@@ -315,10 +351,18 @@ public class RiftLauncher
 		}
 		try
 		{
-			DevLicense license = API.verifyDevLicense(key);
-			if (license.isValid())
+			Session current = SESSION.get();
+			DevLicense license = API.verifyDevLicense(key,
+				current == null ? null : current.getAccessToken());
+			if (license.isValid() && keyBelongsToSignedInAccount(license))
 			{
 				frame.setDevLicenseVerified(true, DevLicenseStore.mask(key), license.getTier());
+			}
+			else if (license.isValid())
+			{
+				// Live key, wrong account — e.g. signed out and back in as someone else.
+				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevStatus("Stored developer key belongs to a different Rift account");
 			}
 			else
 			{
@@ -351,13 +395,17 @@ public class RiftLauncher
 		}
 		try
 		{
-			DevLicense license = API.verifyDevLicense(key);
-			if (license.isValid())
+			Session current = SESSION.get();
+			DevLicense license = API.verifyDevLicense(key,
+				current == null ? null : current.getAccessToken());
+			if (license.isValid() && keyBelongsToSignedInAccount(license))
 			{
 				return true;
 			}
 			frame.setDevLicenseVerified(false, null, null);
-			frame.setDevStatus("Developer key rejected - launching in standard mode");
+			frame.setDevStatus(license.isValid()
+				? "Developer key belongs to a different account - launching in standard mode"
+				: "Developer key rejected - launching in standard mode");
 			return false;
 		}
 		catch (Exception ex)

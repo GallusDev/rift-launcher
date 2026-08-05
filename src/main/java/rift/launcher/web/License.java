@@ -22,6 +22,14 @@ public final class License
 	@SerializedName("discount_bps")
 	private int discountBps;
 
+	/**
+	 * Whether this account is a registered developer. Cosmetic only — it decides whether the launcher
+	 * shows the Developer section, not whether developer mode is granted. The gate is the license key
+	 * itself, verified (and bound to this account) server-side by {@code /api/v1/dev/verify}. Defaults
+	 * to false, so an older server that omits the field simply hides the section.
+	 */
+	private boolean developer;
+
 	private List<Entitlement> entitlements;
 
 	public boolean isVip()
@@ -53,6 +61,11 @@ public final class License
 	public int getDiscountBps()
 	{
 		return discountBps;
+	}
+
+	public boolean isDeveloper()
+	{
+		return developer;
 	}
 
 	public List<Entitlement> getEntitlements()

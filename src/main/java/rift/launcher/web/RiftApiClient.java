@@ -50,8 +50,26 @@ public final class RiftApiClient
 	 */
 	public DevLicense verifyDevLicense(String key) throws IOException
 	{
+		return verifyDevLicense(key, null);
+	}
+
+	/**
+	 * As {@link #verifyDevLicense(String)}, but also tells the server <i>who is asking</i> by sending the
+	 * signed-in session as a Bearer token.
+	 *
+	 * <p>This lets the server enforce that the key belongs to the caller — the authoritative version of
+	 * the ownership check the launcher also does locally — and lets it record attempts to use someone
+	 * else's key. The header is optional on the server side (the SDK authenticates with the key alone),
+	 * so sending it is safe whether or not that enforcement has shipped.
+	 */
+	public DevLicense verifyDevLicense(String key, String accessToken) throws IOException
+	{
 		Map<String, String> headers = new HashMap<>();
 		headers.put("Content-Type", "application/json");
+		if (accessToken != null && !accessToken.isEmpty())
+		{
+			headers.put("Authorization", "Bearer " + accessToken);
+		}
 
 		JsonObject body = new JsonObject();
 		body.addProperty("key", key);
