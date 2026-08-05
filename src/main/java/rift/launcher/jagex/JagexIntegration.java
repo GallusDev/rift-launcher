@@ -128,6 +128,10 @@ public class JagexIntegration
 		}
 		Files.copy(backup.toPath(), configFile().toPath(), StandardCopyOption.REPLACE_EXISTING);
 		Files.delete(backup.toPath());
+		// shim.json only describes a redirect that no longer exists, so it goes too. User data
+		// (accounts, sign-in, developer key) is deliberately left alone -- uninstalling must not
+		// destroy the accounts someone imported.
+		Files.deleteIfExists(shimConfigFile().toPath());
 		log.info("Rift: Jagex Launcher integration removed; RuneLite config restored");
 		return true;
 	}

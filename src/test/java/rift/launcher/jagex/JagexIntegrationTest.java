@@ -153,5 +153,20 @@ public class JagexIntegrationTest
 		assertEquals(ORIGINAL, new String(
 			Files.readAllBytes(new File(runeLiteDir, "config.json").toPath()), StandardCharsets.UTF_8));
 		assertFalse(new File(runeLiteDir, "config.json.rift-backup").exists());
+		// shim.json describes a redirect that no longer exists, so it must not survive either.
+		assertFalse(new File(riftDir, "shim.json").exists());
+	}
+
+	@Test
+	public void restoreLeavesUserDataAlone() throws Exception
+	{
+		File accounts = new File(riftDir, "accounts.dat");
+		Files.write(accounts.toPath(), new byte[]{1, 2, 3});
+		integration.apply();
+
+		integration.restore();
+
+		// Uninstalling must never destroy imported accounts or a stored sign-in.
+		assertTrue("user data must survive an uninstall", accounts.isFile());
 	}
 }
