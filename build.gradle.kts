@@ -70,17 +70,36 @@ tasks.register("deployLauncher") {
     doLast {
         val jar = shadowJar.get().archiveFile.get().asFile
         val riftDir = File(System.getProperty("user.home"), ".rift")
+        // The app-image jar is the one the installed launcher actually runs. Windows holds it open
+        // while the launcher is running, so a copy there fails -- and failing quietly means the next
+        // launch silently runs the old build. Fail loudly instead.
+        val appImageJar = File(riftDir, "launcher-app/RiftLauncher/app/rift-launcher.jar")
+        var appImageUpdated = false
+
         listOf(
             File(riftDir, "rift-launcher.jar"),
             File(riftDir, "launcher-app/_input/rift-launcher.jar"),
-            File(riftDir, "launcher-app/RiftLauncher/app/rift-launcher.jar")
+            appImageJar
         ).forEach { target ->
-            if (target.parentFile.isDirectory) {
+            if (!target.parentFile.isDirectory) {
+                logger.lifecycle("Skipped (no such dir) -> $target")
+                return@forEach
+            }
+            try {
                 jar.copyTo(target, overwrite = true)
                 logger.lifecycle("Deployed launcher -> $target")
-            } else {
-                logger.lifecycle("Skipped (no such dir) -> $target")
+                if (target == appImageJar) appImageUpdated = true
+            } catch (e: Exception) {
+                logger.lifecycle("FAILED -> $target (${e.javaClass.simpleName})")
             }
+        }
+
+        if (appImageJar.parentFile.isDirectory && !appImageUpdated) {
+            throw GradleException(
+                "Could not update ${appImageJar}. The Rift launcher is probably running and holding " +
+                    "it open — close it and re-run. (The installed launcher would otherwise keep " +
+                    "running the previous build.)"
+            )
         }
     }
 }
@@ -156,10 +175,13 @@ tasks.register<Exec>("jpackageAppImage") {
 tasks.register<Copy>("stageInstallerPayload") {
     dependsOn(shadowJar, "jpackageAppImage")
     val staging = layout.buildDirectory.dir("installer-payload")
+    // Wipe first: Copy leaves behind files whose source has gone, so a dropped artefact (the client
+    // jar) would linger here and make the staging directory misrepresent what actually ships.
+    doFirst { staging.get().asFile.deleteRecursively() }
     into(staging)
     from(shadowJar.get().archiveFile) { rename { "rift-launcher.jar" } }
-    // The client is produced by the separate client/ build and deployed to ~/.rift by it.
-    from(File(System.getProperty("user.home"), ".rift/rift-client.jar"))
+    // The client jar is intentionally absent: the launcher downloads it from the client release
+    // channel, so the installer can never overwrite a newer client with a stale bundled copy.
     from(layout.buildDirectory.dir("app-image/RiftLauncher")) { into("launcher-app/RiftLauncher") }
     doLast { logger.lifecycle("Installer payload staged -> ${staging.get().asFile}") }
 }

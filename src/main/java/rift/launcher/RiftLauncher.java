@@ -64,7 +64,7 @@ public class RiftLauncher
 		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
 
 	/** This build's version, used to decide whether the launcher channel has something newer. */
-	private static final String LAUNCHER_VERSION = "1.0.0";
+	private static final String LAUNCHER_VERSION = "1.0.3";
 	private static final UpdateService UPDATES = new UpdateService(API, RIFT_DIR, LAUNCHER_VERSION);
 	private static final AtomicReference<Release> PENDING_LAUNCHER_UPDATE = new AtomicReference<>();
 
@@ -98,7 +98,7 @@ public class RiftLauncher
 			frame.setOnSignOut(() -> signOut(frame));
 			frame.setOnVerifyDevKey(key -> verifyAndSaveDevKey(frame, key));
 			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
-			frame.setOnCheckUpdates(() -> checkUpdates(frame));
+			frame.setOnCheckUpdates(() -> checkUpdates(frame, false));
 			frame.setOnInstallLauncherUpdate(() -> installLauncherUpdate(frame));
 			frame.setOnRepairJagex(() -> repairJagex(frame));
 			frame.setOnRemoveJagex(() -> removeJagex(frame));
@@ -114,7 +114,7 @@ public class RiftLauncher
 
 			// Check for updates on start. The client is swapped silently (it is not running); a launcher
 			// update only arms the install button, since replacing a running launcher needs the installer.
-			new Thread(() -> checkUpdates(frame), "rift-update-check").start();
+			new Thread(() -> checkUpdates(frame, true), "rift-update-check").start();
 
 			// Re-check the license while signed in, so a ban that happens after sign-in is reflected
 			// (the client reacts via its own poll; the launcher needs its own).
@@ -550,7 +550,7 @@ public class RiftLauncher
 	 * Runs an update check off the UI thread. Failures are reported in the status line and never
 	 * interrupt anything — someone should always be able to play on the build they already have.
 	 */
-	private static void checkUpdates(LauncherFrame frame)
+	private static void checkUpdates(LauncherFrame frame, boolean promptOnFind)
 	{
 		frame.setUpdateStatus("Updates: checking...", false, false);
 		UpdateService.Result result = UPDATES.check();
@@ -560,6 +560,49 @@ public class RiftLauncher
 		{
 			frame.setStatus("Client updated - the new version is used on your next launch");
 		}
+		// Only the automatic check prompts. A manual check means the user is already looking at the
+		// Settings tab, where the button is now armed -- a dialog on top of that is just nagging.
+		if (promptOnFind && result.getLauncherUpdate() != null)
+		{
+			promptLauncherUpdate(frame, result.getLauncherUpdate());
+		}
+	}
+
+	/**
+	 * Offers a found launcher update once, on startup. Declining leaves the armed button in Settings,
+	 * so the update is never lost -- it just stops interrupting.
+	 */
+	private static void promptLauncherUpdate(LauncherFrame frame, Release update)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			StringBuilder message = new StringBuilder();
+			message.append("Rift launcher ").append(update.getVersion()).append(" is available.");
+			String notes = update.getNotesMd();
+			if (notes != null && !notes.trim().isEmpty())
+			{
+				String trimmed = notes.trim();
+				if (trimmed.length() > 300)
+				{
+					trimmed = trimmed.substring(0, 300) + "...";
+				}
+				message.append(System.lineSeparator()).append(System.lineSeparator()).append(trimmed);
+			}
+			message.append(System.lineSeparator()).append(System.lineSeparator())
+				.append("Install it now? Rift will close while the installer runs.");
+
+			int choice = javax.swing.JOptionPane.showConfirmDialog(null, message.toString(),
+				"Rift update available", javax.swing.JOptionPane.YES_NO_OPTION,
+				javax.swing.JOptionPane.INFORMATION_MESSAGE);
+			if (choice == javax.swing.JOptionPane.YES_OPTION)
+			{
+				installLauncherUpdate(frame);
+			}
+			else
+			{
+				frame.setStatus("Update postponed - install it any time from Settings");
+			}
+		});
 	}
 
 	/**
