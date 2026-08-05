@@ -126,15 +126,21 @@ tasks.register<Exec>("jpackageAppImage") {
         dest.mkdirs()
     }
 
+    // Same icon the installer uses, so the exe, its shortcuts and the setup program all match rather
+    // than RiftLauncher.exe showing the generic Java icon.
+    val icon = rootProject.file("../installer/rift-installer.ico")
+
     commandLine(
-        "$jpackageHome/bin/jpackage.exe",
-        "--type", "app-image",
-        "--name", "RiftLauncher",
-        "--input", input.absolutePath,
-        "--main-jar", "rift-launcher.jar",
-        "--main-class", "rift.launcher.RiftLauncher",
-        "--runtime-image", runtime.absolutePath,
-        "--dest", dest.absolutePath
+        listOf(
+            "$jpackageHome/bin/jpackage.exe",
+            "--type", "app-image",
+            "--name", "RiftLauncher",
+            "--input", input.absolutePath,
+            "--main-jar", "rift-launcher.jar",
+            "--main-class", "rift.launcher.RiftLauncher",
+            "--runtime-image", runtime.absolutePath,
+            "--dest", dest.absolutePath
+        ) + if (icon.isFile) listOf("--icon", icon.absolutePath) else emptyList()
     )
 
     doLast { logger.lifecycle("App-image built -> ${dest.resolve("RiftLauncher")}") }
