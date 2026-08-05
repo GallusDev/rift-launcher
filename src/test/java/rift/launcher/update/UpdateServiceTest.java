@@ -91,6 +91,30 @@ public class UpdateServiceTest
 	}
 
 	@Test
+	public void aFailedSwapLeavesNoStagingFileBehind() throws Exception
+	{
+		// A directory where the jar should be makes both moves fail, standing in for the real case:
+		// Windows holding the jar open while a client is running.
+		File target = new File(tmp.getRoot(), "locked");
+		//noinspection ResultOfMethodCallIgnored
+		target.mkdirs();
+		//noinspection ResultOfMethodCallIgnored
+		new File(target, "keeps-it-non-empty").createNewFile();
+
+		try
+		{
+			UpdateService.replaceAtomically(target, "payload".getBytes(StandardCharsets.UTF_8));
+		}
+		catch (Exception expected)
+		{
+			// The swap is meant to fail here; what matters is what it leaves behind.
+		}
+
+		assertFalse("a locked target must not accumulate .new files",
+			new File(tmp.getRoot(), "locked.new").exists());
+	}
+
+	@Test
 	public void clientIsFetchedWhenTheJarIsMissing()
 	{
 		// The installer no longer ships the client, so a fresh install has no jar and must download.
