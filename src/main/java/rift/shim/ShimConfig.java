@@ -43,6 +43,16 @@ public final class ShimConfig
 	@SerializedName("runelite_vm_args")
 	private List<String> runeLiteVmArgs;
 
+	/**
+	 * Vortex's launch pair, recorded only when Vortex is already installed. Purely a convenience so the
+	 * chooser can offer it; Rift never requires Vortex and works fine when these are null.
+	 */
+	@SerializedName("vortex_exe")
+	private String vortexExe;
+
+	@SerializedName("vortex_jar")
+	private String vortexJar;
+
 	/** {@code "rift"}, {@code "runelite"}, or null to ask each launch. */
 	@SerializedName("remembered_choice")
 	private String rememberedChoice;
@@ -146,6 +156,26 @@ public final class ShimConfig
 	public void setRuneLiteVmArgs(List<String> runeLiteVmArgs)
 	{
 		this.runeLiteVmArgs = runeLiteVmArgs;
+	}
+
+	public String getVortexExe()
+	{
+		return vortexExe;
+	}
+
+	public void setVortexExe(String vortexExe)
+	{
+		this.vortexExe = vortexExe;
+	}
+
+	public String getVortexJar()
+	{
+		return vortexJar;
+	}
+
+	public void setVortexJar(String vortexJar)
+	{
+		this.vortexJar = vortexJar;
 	}
 
 	public String getRememberedChoice()

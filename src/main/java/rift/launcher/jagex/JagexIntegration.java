@@ -132,6 +132,17 @@ public class JagexIntegration
 		shim.setRuneLiteClassPath(original.getClassPath());
 		shim.setRuneLiteMainClass(original.getMainClass());
 		shim.setRuneLiteVmArgs(original.getVmArgs());
+
+		// Optional convenience only: if Vortex is already installed, offer it in the chooser too. Rift
+		// never requires Vortex — when it is absent the chooser simply shows two buttons.
+		File vortexExe = new File("C:/Program Files/Vortex/jre/bin/vortex-launcher.exe");
+		File vortexJar = new File("C:/Program Files/Vortex/bin/vortex-launcher.jar");
+		if (vortexExe.isFile() && vortexJar.isFile())
+		{
+			shim.setVortexExe(vortexExe.getAbsolutePath());
+			shim.setVortexJar(vortexJar.getAbsolutePath());
+		}
+
 		ShimConfig.save(shimConfigFile(), shim);
 	}
 

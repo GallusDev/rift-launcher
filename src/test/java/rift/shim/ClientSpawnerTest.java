@@ -56,6 +56,20 @@ public class ClientSpawnerTest
 	}
 
 	@Test
+	public void vortexCommandUsesItsOwnStubAndJar()
+	{
+		ShimConfig c = config();
+		c.setVortexExe("C:\\Program Files\\Vortex\\jre\\bin\\vortex-launcher.exe");
+		c.setVortexJar("C:\\Program Files\\Vortex\\bin\\vortex-launcher.jar");
+
+		assertEquals(Arrays.asList(
+			"C:\\Program Files\\Vortex\\jre\\bin\\vortex-launcher.exe",
+			"-jar",
+			"C:\\Program Files\\Vortex\\bin\\vortex-launcher.jar",
+			"--jagex-import"), ClientSpawner.vortexCommand(c));
+	}
+
+	@Test
 	public void noCommandCarriesJagexCredentials()
 	{
 		// JX_* must reach the child through the inherited environment, never the command line,
