@@ -63,8 +63,8 @@ public class RiftLauncher
 	private static final JagexIntegration JAGEX =
 		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
 
-	/** This build's version, used to decide whether the launcher channel has something newer. */
-	private static final String LAUNCHER_VERSION = "1.0.3";
+	/** This build's version, stamped by the build -- see {@link RiftVersion}. */
+	private static final String LAUNCHER_VERSION = RiftVersion.get();
 	private static final UpdateService UPDATES = new UpdateService(API, RIFT_DIR, LAUNCHER_VERSION);
 	private static final AtomicReference<Release> PENDING_LAUNCHER_UPDATE = new AtomicReference<>();
 
@@ -92,7 +92,7 @@ public class RiftLauncher
 		SwingUtilities.invokeLater(() ->
 		{
 			FlatDarkLaf.setup();
-			LauncherFrame frame = new LauncherFrame();
+			LauncherFrame frame = new LauncherFrame(LAUNCHER_VERSION);
 			frame.setOnLaunch(account -> launchAccount(clientLauncher, frame, account));
 			frame.setOnSignIn(() -> signIn(frame));
 			frame.setOnSignOut(() -> signOut(frame));

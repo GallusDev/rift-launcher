@@ -76,9 +76,11 @@ public class LauncherFrame extends JFrame
 	private Consumer<String> onVerifyDevKey = key -> { };
 	private Runnable onRemoveDevKey = () -> { };
 
-	public LauncherFrame()
+	public LauncherFrame(String version)
 	{
-		super("Rift Launcher");
+		// Showing the version makes "which build am I on?" answerable without digging -- which matters
+		// now that the launcher updates itself and can be rolled back to an older build.
+		super("Rift Launcher - v" + version);
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
 		setSize(880, 560);
 		setLocationRelativeTo(null);
