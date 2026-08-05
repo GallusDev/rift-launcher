@@ -9,6 +9,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -17,12 +19,21 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JPasswordField;
 import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
 import javax.swing.JTable;
 import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import rift.launcher.account.Account;
 
+/**
+ * The launcher window: a <b>Home</b> tab listing accounts with a Launch button on each row, and a
+ * <b>Settings</b> tab holding the Jagex Launcher integration and developer controls.
+ *
+ * <p>Launching per row rather than from a single button at the bottom means the action sits with the
+ * thing it acts on, and there is no "select a row first" step. Settings are tabbed away because they
+ * are configured rarely but were previously taking up permanent space beneath the account list.
+ */
 public class LauncherFrame extends JFrame
 {
 	private final AccountTableModel model = new AccountTableModel();
@@ -60,11 +71,24 @@ public class LauncherFrame extends JFrame
 	{
 		super("Rift Launcher");
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
-		// Tall enough for the two-row Developer section without squeezing the account table.
-		setSize(720, 520);
+		setSize(880, 560);
 		setLocationRelativeTo(null);
 		setIconImages(loadIcons());
 
+		JTabbedPane tabs = new JTabbedPane();
+		tabs.addTab("Home", buildHomeTab());
+		tabs.addTab("Settings", buildSettingsTab());
+
+		// The status line sits outside the tabs so feedback stays visible whichever tab is open.
+		JPanel statusBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		statusBar.add(status);
+
+		add(tabs, BorderLayout.CENTER);
+		add(statusBar, BorderLayout.SOUTH);
+	}
+
+	private JPanel buildHomeTab()
+	{
 		// Rift-account bar: shows the signed-in Discord name and the sign-in / sign-out control.
 		JPanel accountBar = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		riftAuthButton.addActionListener(e ->
@@ -80,32 +104,43 @@ public class LauncherFrame extends JFrame
 		});
 		accountBar.add(riftAuthButton);
 		accountBar.add(riftAccountLabel);
-		add(accountBar, BorderLayout.NORTH);
 
 		JTable table = new JTable(model);
 		table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-		table.setRowHeight(24);
-		table.getColumnModel().getColumn(1).setPreferredWidth(140);
-		table.getColumnModel().getColumn(2).setPreferredWidth(110);
+		table.setRowHeight(28);
+		table.getColumnModel().getColumn(0).setPreferredWidth(220);
+		table.getColumnModel().getColumn(1).setPreferredWidth(160);
+		table.getColumnModel().getColumn(2).setPreferredWidth(120);
+		table.getColumnModel().getColumn(AccountTableModel.LAUNCH_COLUMN).setPreferredWidth(110);
+		table.getColumnModel().getColumn(AccountTableModel.LAUNCH_COLUMN).setMaxWidth(140);
 
-		// The session-age column is computed from the clock, so repaint it periodically.
-		new Timer(30_000, e -> model.refreshAges()).start();
-
-		JButton launch = new JButton("Launch");
-		launch.addActionListener(e ->
+		// One Launch button per row, so the action sits with the account it launches.
+		new ButtonColumn(table, AccountTableModel.LAUNCH_COLUMN, row ->
 		{
-			int row = table.getSelectedRow();
-			if (row < 0)
-			{
-				setStatus("Select an account first");
-				return;
-			}
 			Account account = model.accountAt(row);
 			model.setStatus(account.getCharacterId(), "Launching...");
 			onLaunch.accept(account);
 		});
 
-		// Developer key row. Hidden until signed in, since a key is only meaningful for a Rift account.
+		// The session-age column is computed from the clock, so repaint it periodically.
+		new Timer(30_000, e -> model.refreshAges()).start();
+
+		JPanel home = new JPanel(new BorderLayout());
+		home.add(accountBar, BorderLayout.NORTH);
+		home.add(new JScrollPane(table), BorderLayout.CENTER);
+		return home;
+	}
+
+	private JPanel buildSettingsTab()
+	{
+		jagexPanel.setBorder(BorderFactory.createTitledBorder("Jagex Launcher integration"));
+		jagexRepairButton.addActionListener(e -> onRepairJagex.run());
+		jagexRemoveButton.addActionListener(e -> onRemoveJagex.run());
+		jagexPanel.add(jagexStatusLabel);
+		jagexPanel.add(jagexRepairButton);
+		jagexPanel.add(jagexRemoveButton);
+
+		// Developer key row. Hidden until signed in as a developer, since a key is only meaningful then.
 		devPanel.setBorder(BorderFactory.createTitledBorder("Developer"));
 		devKeyField.setToolTipText("Your rift_dev_... license key from the developer dashboard");
 		devVerifyButton.addActionListener(e ->
@@ -123,6 +158,7 @@ public class LauncherFrame extends JFrame
 		devRemoveButton.addActionListener(e -> onRemoveDevKey.run());
 		// Developer mode stays locked until a key actually verifies.
 		devModeBox.setEnabled(false);
+
 		JPanel devKeyRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		devKeyRow.add(new JLabel("License key:"));
 		devKeyRow.add(devKeyField);
@@ -137,25 +173,49 @@ public class LauncherFrame extends JFrame
 		devPanel.add(devModeRow);
 		devPanel.setVisible(false);
 
-		jagexPanel.setBorder(BorderFactory.createTitledBorder("Jagex Launcher integration"));
-		jagexRepairButton.addActionListener(e -> onRepairJagex.run());
-		jagexRemoveButton.addActionListener(e -> onRemoveJagex.run());
-		jagexPanel.add(jagexStatusLabel);
-		jagexPanel.add(jagexRepairButton);
-		jagexPanel.add(jagexRemoveButton);
+		// Stacked top-down so each section keeps its natural height and the rest is empty space.
+		JPanel column = new JPanel();
+		column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+		jagexPanel.setAlignmentX(LEFT_ALIGNMENT);
+		devPanel.setAlignmentX(LEFT_ALIGNMENT);
+		column.add(jagexPanel);
+		column.add(devPanel);
+		column.add(Box.createVerticalGlue());
 
-		JPanel bottom = new JPanel(new BorderLayout());
-		JPanel stack = new JPanel(new GridLayout(0, 1));
-		stack.add(jagexPanel);
-		stack.add(devPanel);
-		JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
-		launchRow.add(launch);
-		launchRow.add(status);
-		bottom.add(stack, BorderLayout.NORTH);
-		bottom.add(launchRow, BorderLayout.SOUTH);
+		JPanel settings = new JPanel(new BorderLayout());
+		settings.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+		settings.add(column, BorderLayout.NORTH);
+		return settings;
+	}
 
-		add(new JScrollPane(table), BorderLayout.CENTER);
-		add(bottom, BorderLayout.SOUTH);
+	/** The Rift logo at several sizes, for the title-bar and taskbar icon. */
+	private static List<Image> loadIcons()
+	{
+		List<Image> icons = new ArrayList<>();
+		for (int size : new int[]{16, 32, 64, 256})
+		{
+			URL url = LauncherFrame.class.getResource("/rift/launcher/icon/icon-" + size + ".png");
+			if (url != null)
+			{
+				icons.add(new ImageIcon(url).getImage());
+			}
+		}
+		return icons;
+	}
+
+	public void setOnLaunch(Consumer<Account> onLaunch)
+	{
+		this.onLaunch = onLaunch;
+	}
+
+	public void setOnSignIn(Runnable onSignIn)
+	{
+		this.onSignIn = onSignIn;
+	}
+
+	public void setOnSignOut(Runnable onSignOut)
+	{
+		this.onSignOut = onSignOut;
 	}
 
 	public void setOnRepairJagex(Runnable onRepairJagex)
@@ -196,10 +256,9 @@ public class LauncherFrame extends JFrame
 	}
 
 	/**
-	 * Shows/hides the whole developer section, driven by {@code license/check.developer}. Cosmetic: the
-	 * real gate is the license key, verified and bound to this account server-side. Hiding also drops
-	 * any armed developer mode, so an account that loses developer status can't launch with it still
-	 * ticked.
+	 * Shows/hides the developer section, driven by {@code license/check.developer}. Cosmetic: the real
+	 * gate is the license key, verified and bound to this account server-side. Hiding also drops any
+	 * armed developer mode, so an account that loses developer status can't launch with it still ticked.
 	 */
 	public void setDeveloperSectionVisible(boolean visible)
 	{
@@ -250,37 +309,7 @@ public class LauncherFrame extends JFrame
 		});
 	}
 
-	/** The Rift logo at several sizes, for the title-bar and taskbar icon. */
-	private static List<Image> loadIcons()
-	{
-		List<Image> icons = new ArrayList<>();
-		for (int size : new int[]{16, 32, 64, 256})
-		{
-			URL url = LauncherFrame.class.getResource("/rift/launcher/icon/icon-" + size + ".png");
-			if (url != null)
-			{
-				icons.add(new ImageIcon(url).getImage());
-			}
-		}
-		return icons;
-	}
-
-	public void setOnLaunch(Consumer<Account> onLaunch)
-	{
-		this.onLaunch = onLaunch;
-	}
-
-	public void setOnSignIn(Runnable onSignIn)
-	{
-		this.onSignIn = onSignIn;
-	}
-
-	public void setOnSignOut(Runnable onSignOut)
-	{
-		this.onSignOut = onSignOut;
-	}
-
-	/** Updates the account bar: a non-null name shows "Signed in as ..." + a Sign-out button. */
+	/** Updates the account bar: a non-null name shows "signed in as ..." + a Sign-out button. */
 	public void setRiftAccount(String userName)
 	{
 		SwingUtilities.invokeLater(() ->
