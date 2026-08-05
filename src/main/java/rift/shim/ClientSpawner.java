@@ -52,6 +52,20 @@ public final class ClientSpawner
 		return cmd;
 	}
 
+	/**
+	 * Vortex's own launch line, mirroring how its shim invokes it. Offered only as a convenience when
+	 * Vortex is already installed — Rift never requires it and never depends on it being present.
+	 */
+	public static List<String> vortexCommand(ShimConfig config)
+	{
+		List<String> cmd = new ArrayList<>();
+		cmd.add(config.getVortexExe());
+		cmd.add("-jar");
+		cmd.add(config.getVortexJar());
+		cmd.add("--jagex-import");
+		return cmd;
+	}
+
 	/** Starts {@code cmd} in {@code workingDir}, inheriting this process's environment. */
 	public static Process spawn(List<String> cmd, File workingDir) throws IOException
 	{
