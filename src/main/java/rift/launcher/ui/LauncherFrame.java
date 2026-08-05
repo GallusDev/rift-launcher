@@ -34,6 +34,16 @@ public class LauncherFrame extends JFrame
 	private Runnable onSignIn = () -> { };
 	private Runnable onSignOut = () -> { };
 
+	// Jagex Launcher integration: current state plus manual repair/remove. Repair must live here
+	// because once the config reverts, the Jagex Launcher boots RuneLite rather than Rift -- so the
+	// launcher has to be able to fix itself when started from its own shortcut.
+	private final JPanel jagexPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+	private final JLabel jagexStatusLabel = new JLabel("Jagex Launcher: checking...");
+	private final JButton jagexRepairButton = new JButton("Repair");
+	private final JButton jagexRemoveButton = new JButton("Remove");
+	private Runnable onRepairJagex = () -> { };
+	private Runnable onRemoveJagex = () -> { };
+
 	// Developer section: entering a valid, unrevoked license key is what unlocks developer mode.
 	// One row per logical control group -- a single FlowLayout row would wrap on a narrow window and
 	// FlowLayout reports only one row's height, which silently clips whatever wrapped.
@@ -127,15 +137,46 @@ public class LauncherFrame extends JFrame
 		devPanel.add(devModeRow);
 		devPanel.setVisible(false);
 
+		jagexPanel.setBorder(BorderFactory.createTitledBorder("Jagex Launcher integration"));
+		jagexRepairButton.addActionListener(e -> onRepairJagex.run());
+		jagexRemoveButton.addActionListener(e -> onRemoveJagex.run());
+		jagexPanel.add(jagexStatusLabel);
+		jagexPanel.add(jagexRepairButton);
+		jagexPanel.add(jagexRemoveButton);
+
 		JPanel bottom = new JPanel(new BorderLayout());
+		JPanel stack = new JPanel(new GridLayout(0, 1));
+		stack.add(jagexPanel);
+		stack.add(devPanel);
 		JPanel launchRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
 		launchRow.add(launch);
 		launchRow.add(status);
-		bottom.add(devPanel, BorderLayout.NORTH);
+		bottom.add(stack, BorderLayout.NORTH);
 		bottom.add(launchRow, BorderLayout.SOUTH);
 
 		add(new JScrollPane(table), BorderLayout.CENTER);
 		add(bottom, BorderLayout.SOUTH);
+	}
+
+	public void setOnRepairJagex(Runnable onRepairJagex)
+	{
+		this.onRepairJagex = onRepairJagex;
+	}
+
+	public void setOnRemoveJagex(Runnable onRemoveJagex)
+	{
+		this.onRemoveJagex = onRemoveJagex;
+	}
+
+	/** Shows the integration state; Repair only means something when RuneLite is present but reverted. */
+	public void setJagexStatus(String text, boolean repairEnabled, boolean removeEnabled)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			jagexStatusLabel.setText(text);
+			jagexRepairButton.setEnabled(repairEnabled);
+			jagexRemoveButton.setEnabled(removeEnabled);
+		});
 	}
 
 	public void setOnVerifyDevKey(Consumer<String> onVerifyDevKey)

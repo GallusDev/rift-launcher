@@ -58,6 +58,8 @@ public class RiftLauncher
 		new AuthStore(AUTH_FILE, new DpapiCrypto()));
 	private static final RiftApiClient API = new RiftApiClient(RiftConfig.apiBaseUrl(), new JdkHttp());
 	private static final DevLicenseStore DEV_LICENSE = new DevLicenseStore(DEV_LICENSE_FILE, new DpapiCrypto());
+	private static final JagexIntegration JAGEX =
+		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
 
 	public static void main(String[] args)
 	{
@@ -89,12 +91,17 @@ public class RiftLauncher
 			frame.setOnSignOut(() -> signOut(frame));
 			frame.setOnVerifyDevKey(key -> verifyAndSaveDevKey(frame, key));
 			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
+			frame.setOnRepairJagex(() -> repairJagex(frame));
+			frame.setOnRemoveJagex(() -> removeJagex(frame));
 			frame.setAccounts(store.load());
 			frame.setVisible(true);
 
 			// Silently resume a stored session so returning users are signed in without a browser.
 			// First-time sign-in is driven by the button (signIn), not forced on startup.
 			resumeRiftAccount(frame);
+
+			// Repair a config reverted by a RuneLite update, so the next Play lands on Rift again.
+			new Thread(() -> refreshJagexIntegration(frame, true), "rift-jagex-check").start();
 
 			// Re-check the license while signed in, so a ban that happens after sign-in is reflected
 			// (the client reacts via its own poll; the launcher needs its own).
@@ -467,6 +474,63 @@ public class RiftLauncher
 			log.warn("Developer license re-verify failed at launch ({})", ex.getClass().getSimpleName());
 			return false;
 		}
+	}
+
+	/**
+	 * Reports integration state and silently repairs a reverted config. Repair has to be reachable from
+	 * the launcher because once the config reverts, the Jagex Launcher boots RuneLite rather than Rift —
+	 * so the launcher must be able to fix itself when started from its own shortcut.
+	 */
+	private static void refreshJagexIntegration(LauncherFrame frame, boolean autoRepair)
+	{
+		JagexIntegration.Status status = JAGEX.status();
+		if (status == JagexIntegration.Status.REVERTED && autoRepair)
+		{
+			try
+			{
+				JAGEX.repair();
+				status = JAGEX.status();
+				log.info("Rift: repaired the Jagex Launcher integration");
+			}
+			catch (Exception ex)
+			{
+				log.warn("Rift: could not repair the Jagex Launcher integration ({})",
+					ex.getClass().getSimpleName());
+			}
+		}
+		switch (status)
+		{
+			case ACTIVE:
+				frame.setJagexStatus("Jagex Launcher: active", false, true);
+				break;
+			case REVERTED:
+				frame.setJagexStatus("Jagex Launcher: not active - click Repair", true, false);
+				break;
+			default:
+				frame.setJagexStatus("Jagex Launcher: RuneLite not installed", false, false);
+				break;
+		}
+	}
+
+	private static void repairJagex(LauncherFrame frame)
+	{
+		new Thread(() -> refreshJagexIntegration(frame, true), "rift-jagex-repair").start();
+	}
+
+	private static void removeJagex(LauncherFrame frame)
+	{
+		new Thread(() ->
+		{
+			try
+			{
+				JAGEX.restore();
+			}
+			catch (Exception ex)
+			{
+				log.warn("Rift: could not remove the Jagex integration ({})", ex.getClass().getSimpleName());
+			}
+			refreshJagexIntegration(frame, false);
+		}, "rift-jagex-remove").start();
 	}
 
 	/** Ban: show the account-banned notice and close the launcher entirely. */
