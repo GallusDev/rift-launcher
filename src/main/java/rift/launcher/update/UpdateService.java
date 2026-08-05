@@ -128,7 +128,8 @@ public class UpdateService
 	 * version is treated the same way, so a lost or corrupt versions.json self-heals instead of leaving
 	 * the launcher unable to start a client.
 	 */
-	static boolean needsClientDownload(boolean jarPresent, String installedVersion, String availableVersion)
+	static boolean needsClientDownload(boolean jarPresent, String installedVersion, String installedSha,
+		String availableVersion, String availableSha)
 	{
 		if (availableVersion == null || availableVersion.isEmpty())
 		{
@@ -137,6 +138,13 @@ public class UpdateService
 		if (!jarPresent || installedVersion == null)
 		{
 			return true;
+		}
+		// Prefer the checksum: it is the true identity of a build, so it also catches a rebuild
+		// republished under the same version, where the bytes differ but the label does not. Falls back
+		// to the version when either side has no hash (installs predating the recorded sha256).
+		if (installedSha != null && !installedSha.isEmpty() && availableSha != null && !availableSha.isEmpty())
+		{
+			return !installedSha.equalsIgnoreCase(availableSha);
 		}
 		return InstalledVersions.isUpdate(installedVersion, availableVersion);
 	}
@@ -156,7 +164,8 @@ public class UpdateService
 		}
 
 		File clientJar = new File(riftDir, "rift-client.jar");
-		if (!needsClientDownload(clientJar.isFile(), versions.getClientVersion(), latest.getVersion()))
+		if (!needsClientDownload(clientJar.isFile(), versions.getClientVersion(), versions.getClientSha256(),
+			latest.getVersion(), release.getSha256()))
 		{
 			return false;
 		}
@@ -171,6 +180,7 @@ public class UpdateService
 
 		replaceAtomically(clientJar, bytes);
 		versions.setClientVersion(latest.getVersion());
+		versions.setClientSha256(release.getSha256());
 		versions.save(versionsFile());
 		log.info("Rift: client {} to {}", firstFetch ? "downloaded" : "updated", latest.getVersion());
 		message.append(firstFetch ? "Client downloaded (" : "Client updated to ")

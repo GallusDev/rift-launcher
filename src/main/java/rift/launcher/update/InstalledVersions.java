@@ -29,6 +29,14 @@ public final class InstalledVersions
 	@SerializedName("launcher")
 	private String launcher;
 
+	/**
+	 * The sha256 of the client jar we installed. A stronger identity than the version string: it also
+	 * catches a rebuild republished under the same version, where the bytes change but the label does
+	 * not. Absent for installs that predate this field, which fall back to comparing versions.
+	 */
+	@SerializedName("client_sha256")
+	private String clientSha256;
+
 	public static InstalledVersions load(File file)
 	{
 		if (!file.isFile())
@@ -68,6 +76,16 @@ public final class InstalledVersions
 	public void setClientVersion(String client)
 	{
 		this.client = client;
+	}
+
+	public String getClientSha256()
+	{
+		return clientSha256;
+	}
+
+	public void setClientSha256(String clientSha256)
+	{
+		this.clientSha256 = clientSha256;
 	}
 
 	public String getLauncherVersion()

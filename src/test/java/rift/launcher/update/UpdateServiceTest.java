@@ -118,38 +118,65 @@ public class UpdateServiceTest
 	public void clientIsFetchedWhenTheJarIsMissing()
 	{
 		// The installer no longer ships the client, so a fresh install has no jar and must download.
-		assertTrue(UpdateService.needsClientDownload(false, null, "1.12.35"));
+		assertTrue(UpdateService.needsClientDownload(false, null, null, "1.12.35", null));
 		// Even with a recorded version, an absent jar has to be refetched -- a recorded version with no
 		// file is a broken install, not an up-to-date one.
-		assertTrue(UpdateService.needsClientDownload(false, "1.12.35", "1.12.35"));
+		assertTrue(UpdateService.needsClientDownload(false, "1.12.35", null, "1.12.35", null));
 	}
 
 	@Test
 	public void clientIsFetchedWhenTheRecordedVersionIsUnknown()
 	{
 		// Lost or corrupt versions.json self-heals rather than leaving the launcher unable to start.
-		assertTrue(UpdateService.needsClientDownload(true, null, "1.12.35"));
+		assertTrue(UpdateService.needsClientDownload(true, null, null, "1.12.35", null));
+	}
+
+	@Test
+	public void checksumIdentityCatchesARebuildAtTheSameVersion()
+	{
+		// A republished rebuild keeps the version but changes the bytes -- version comparison alone
+		// would miss it, so the checksum is the real identity of a build.
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.35", "aaaa", "1.12.35", "bbbb"));
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", "aaaa", "1.12.35", "aaaa"));
+		// Server hex case is not ours to assume.
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", "AAAA", "1.12.35", "aaaa"));
+	}
+
+	@Test
+	public void checksumIdentityAcceptsARollback()
+	{
+		// A rolled-back release serves an OLDER build. Refusing that would strand clients on the bad
+		// version forever, so a differing identity always means "install what is served".
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.36", "newer", "1.12.35", "older"));
+	}
+
+	@Test
+	public void versionIsUsedWhenEitherSideHasNoChecksum()
+	{
+		// Installs predating the recorded sha256 must still work.
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.35", null, "1.12.36", "bbbb"));
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", "aaaa", "1.12.35", null));
 	}
 
 	@Test
 	public void clientIsLeftAloneWhenItMatches()
 	{
-		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", "1.12.35"));
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", null, "1.12.35", null));
 	}
 
 	@Test
 	public void clientIsFetchedWhenTheServerAdvertisesSomethingElse()
 	{
-		assertTrue(UpdateService.needsClientDownload(true, "1.12.35", "1.12.36"));
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.35", null, "1.12.36", null));
 		// A deliberate rollback is still a change worth applying.
-		assertTrue(UpdateService.needsClientDownload(true, "1.12.36", "1.12.35"));
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.36", null, "1.12.35", null));
 	}
 
 	@Test
 	public void nothingIsFetchedWhenTheServerAdvertisesNothing()
 	{
-		assertFalse(UpdateService.needsClientDownload(false, null, null));
-		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", ""));
+		assertFalse(UpdateService.needsClientDownload(false, null, null, null, null));
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", null, "", null));
 	}
 
 	@Test
