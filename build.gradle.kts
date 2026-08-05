@@ -78,3 +78,76 @@ tasks.register("deployLauncher") {
         }
     }
 }
+
+// --- Packaging -------------------------------------------------------------------------------
+//
+// Rift must ship its own Java: a user should never need a JDK installed. The launcher app-image
+// bundles a runtime, and the client is spawned from the launcher's java.home, so the whole chain
+// runs on the bundled JRE.
+//
+// The bundled runtime MUST be Java 11. RuneLite reflects into java.base internals (ReflectUtil),
+// which Java 16+ blocks under strong encapsulation (JEP 403). jpackage only exists in JDK 14+, so a
+// newer JDK is used purely as the tool and is handed the Java 11 runtime via --runtime-image.
+val jpackageHome: String = (project.findProperty("rift.jpackageHome") as String?)
+    ?: System.getenv("RIFT_JPACKAGE_HOME")
+    ?: """C:\Users\down_\.jdks\corretto-17.0.18"""
+val java11Home: String = (project.findProperty("rift.java11Home") as String?)
+    ?: System.getenv("JAVA_HOME")
+    ?: """C:\Program Files\Eclipse Adoptium\jdk-11.0.30.7-hotspot"""
+
+// A Java 11 runtime for the app-image. ALL-MODULE-PATH takes every module the JDK offers: a curated
+// list would be smaller, but a module missing from a shipped installer only fails at runtime on a
+// user's machine, and the client pulls in a wide surface (GPU, audio, TLS, JNA, reflection). Stripping
+// debug info and compressing still leaves it well under a full JDK. (Java 11's jlink has no
+// ALL-DEFAULT alias -- that is a jpackage-era name and errors here.)
+val jlinkRuntime = tasks.register<Exec>("jlinkRuntime") {
+    val out = layout.buildDirectory.dir("java11-runtime").get().asFile
+    doFirst { out.deleteRecursively() }
+    commandLine(
+        "$java11Home/bin/jlink.exe",
+        "--add-modules", "ALL-MODULE-PATH",
+        "--strip-debug", "--no-header-files", "--no-man-pages", "--compress=2",
+        "--output", out.absolutePath
+    )
+    doLast { logger.lifecycle("Java 11 runtime -> $out") }
+}
+
+tasks.register<Exec>("jpackageAppImage") {
+    dependsOn(shadowJar, jlinkRuntime)
+    val input = layout.buildDirectory.dir("jpackage-input").get().asFile
+    val dest = layout.buildDirectory.dir("app-image").get().asFile
+    val runtime = layout.buildDirectory.dir("java11-runtime").get().asFile
+
+    doFirst {
+        input.deleteRecursively()
+        input.mkdirs()
+        shadowJar.get().archiveFile.get().asFile.copyTo(File(input, "rift-launcher.jar"), true)
+        dest.deleteRecursively()
+        dest.mkdirs()
+    }
+
+    commandLine(
+        "$jpackageHome/bin/jpackage.exe",
+        "--type", "app-image",
+        "--name", "RiftLauncher",
+        "--input", input.absolutePath,
+        "--main-jar", "rift-launcher.jar",
+        "--main-class", "rift.launcher.RiftLauncher",
+        "--runtime-image", runtime.absolutePath,
+        "--dest", dest.absolutePath
+    )
+
+    doLast { logger.lifecycle("App-image built -> ${dest.resolve("RiftLauncher")}") }
+}
+
+// Everything the Inno Setup installer packages, so the .iss has one predictable source directory.
+tasks.register<Copy>("stageInstallerPayload") {
+    dependsOn(shadowJar, "jpackageAppImage")
+    val staging = layout.buildDirectory.dir("installer-payload")
+    into(staging)
+    from(shadowJar.get().archiveFile) { rename { "rift-launcher.jar" } }
+    // The client is produced by the separate client/ build and deployed to ~/.rift by it.
+    from(File(System.getProperty("user.home"), ".rift/rift-client.jar"))
+    from(layout.buildDirectory.dir("app-image/RiftLauncher")) { into("launcher-app/RiftLauncher") }
+    doLast { logger.lifecycle("Installer payload staged -> ${staging.get().asFile}") }
+}
