@@ -16,6 +16,7 @@ import rift.launcher.account.AccountStore;
 import rift.launcher.crypto.DpapiCrypto;
 import rift.launcher.launch.ClientLauncher;
 import rift.launcher.launch.JxCredentials;
+import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
 import rift.launcher.web.ApiException;
 import rift.launcher.web.AuthFlow;
@@ -60,6 +61,16 @@ public class RiftLauncher
 
 	public static void main(String[] args)
 	{
+		// Installer entry points. These run headless and exit, so they must come before any UI work.
+		if (args.length > 0)
+		{
+			int code = runCliMode(args[0]);
+			if (code >= 0)
+			{
+				System.exit(code);
+			}
+		}
+
 		AccountStore store = new AccountStore(ACCOUNTS_FILE, new DpapiCrypto());
 
 		if (System.getenv("JX_SESSION_ID") != null && System.getenv("JX_CHARACTER_ID") != null)
@@ -90,6 +101,48 @@ public class RiftLauncher
 			POLL.scheduleWithFixedDelay(() -> pollLicense(frame),
 				LICENSE_POLL_SECONDS, LICENSE_POLL_SECONDS, TimeUnit.SECONDS);
 		});
+	}
+
+	/**
+	 * Installer-facing modes, so the installer and the in-app repair share one implementation rather
+	 * than the logic being duplicated in the installer script.
+	 *
+	 * <p>Returns an exit code, or -1 when the argument is not a CLI mode and the launcher should start
+	 * normally — an unrecognised flag must never silently suppress the UI.
+	 */
+	private static int runCliMode(String arg)
+	{
+		JagexIntegration integration =
+			new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
+		try
+		{
+			switch (arg)
+			{
+				case "--install-jagex-integration":
+					if (!integration.isRuneLiteInstalled())
+					{
+						System.err.println("RuneLite is not installed; install it from the Jagex Launcher first.");
+						return 2;
+					}
+					integration.apply();
+					System.out.println("Jagex Launcher integration installed.");
+					return 0;
+				case "--remove-jagex-integration":
+					System.out.println(integration.restore()
+						? "Jagex Launcher integration removed." : "Nothing to remove.");
+					return 0;
+				case "--jagex-status":
+					System.out.println(integration.status());
+					return 0;
+				default:
+					return -1;
+			}
+		}
+		catch (Exception ex)
+		{
+			System.err.println("Jagex integration failed: " + ex.getMessage());
+			return 1;
+		}
 	}
 
 	/** Periodic re-check: ban → close; token rejected + un-refreshable → sign out (session revoked). */
