@@ -277,8 +277,11 @@ public class LauncherFrame extends JFrame
 	 * Reflects the verified state of the stored key. A valid key unlocks (and does not auto-select) the
 	 * developer-mode checkbox; anything else locks and clears it, so a revoked key can't leave developer
 	 * mode armed.
+	 *
+	 * <p>The key itself is never shown -- not even masked. It is a credential, and displaying part of it
+	 * buys nothing: the user only needs to know whether it is working.
 	 */
-	public void setDevLicenseVerified(boolean valid, String maskedKey, String tier)
+	public void setDevLicenseVerified(boolean valid, String tier)
 	{
 		SwingUtilities.invokeLater(() ->
 		{
@@ -286,7 +289,7 @@ public class LauncherFrame extends JFrame
 			if (valid)
 			{
 				devKeyField.setText("");
-				devStatusLabel.setText(maskedKey + (tier == null ? "" : "  (" + tier + ")") + " - verified");
+				devStatusLabel.setText("Licence verified" + (tier == null ? "" : " (" + tier + ")"));
 			}
 			else
 			{

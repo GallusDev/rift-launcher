@@ -67,15 +67,4 @@ public final class DevLicenseStore
 		//noinspection ResultOfMethodCallIgnored
 		file.delete();
 	}
-
-	/** {@code rift_dev_••••••1a2b} — a masked preview for the UI, never the full key. */
-	public static String mask(String key)
-	{
-		if (key == null || key.isEmpty())
-		{
-			return "";
-		}
-		String last4 = key.length() <= 4 ? key : key.substring(key.length() - 4);
-		return "rift_dev_" + "••••••" + last4;
-	}
 }

@@ -280,7 +280,7 @@ public class RiftLauncher
 		// mode. The developer re-enters it after signing back in.
 		DEV_LICENSE.clear();
 		frame.setRiftAccount(null);
-		frame.setDevLicenseVerified(false, null, null);
+		frame.setDevLicenseVerified(false, null);
 		frame.setStatus("Signed out - click Sign in to Rift to switch accounts");
 	}
 
@@ -360,24 +360,24 @@ public class RiftLauncher
 					current == null ? null : current.getAccessToken());
 				if (!license.isValid())
 				{
-					frame.setDevLicenseVerified(false, null, null);
+					frame.setDevLicenseVerified(false, null);
 					frame.setDevStatus("Key rejected - not an active developer key");
 					return;
 				}
 				if (!keyBelongsToSignedInAccount(license))
 				{
 					// A live key, but issued to a different developer. Don't store it.
-					frame.setDevLicenseVerified(false, null, null);
+					frame.setDevLicenseVerified(false, null);
 					frame.setDevStatus("That key belongs to a different Rift account");
 					return;
 				}
 				DEV_LICENSE.save(key);
-				frame.setDevLicenseVerified(true, DevLicenseStore.mask(key), license.getTier());
+				frame.setDevLicenseVerified(true, license.getTier());
 			}
 			catch (Exception ex)
 			{
 				// Fail closed: an unreachable server must not unlock developer mode.
-				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevLicenseVerified(false, null);
 				frame.setDevStatus("Could not reach the Rift server - key not verified");
 				log.warn("Developer license verify failed ({})", ex.getClass().getSimpleName());
 			}
@@ -392,7 +392,7 @@ public class RiftLauncher
 	private static void removeDevKey(LauncherFrame frame)
 	{
 		DEV_LICENSE.clear();
-		frame.setDevLicenseVerified(false, null, null);
+		frame.setDevLicenseVerified(false, null);
 		frame.setDevStatus("Developer key removed");
 	}
 
@@ -405,7 +405,7 @@ public class RiftLauncher
 		String key = DEV_LICENSE.load();
 		if (key == null)
 		{
-			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevLicenseVerified(false, null);
 			frame.setDevStatus("No developer key");
 			return;
 		}
@@ -416,23 +416,23 @@ public class RiftLauncher
 				current == null ? null : current.getAccessToken());
 			if (license.isValid() && keyBelongsToSignedInAccount(license))
 			{
-				frame.setDevLicenseVerified(true, DevLicenseStore.mask(key), license.getTier());
+				frame.setDevLicenseVerified(true, license.getTier());
 			}
 			else if (license.isValid())
 			{
 				// Live key, wrong account — e.g. signed out and back in as someone else.
-				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevLicenseVerified(false, null);
 				frame.setDevStatus("Stored developer key belongs to a different Rift account");
 			}
 			else
 			{
-				frame.setDevLicenseVerified(false, null, null);
+				frame.setDevLicenseVerified(false, null);
 				frame.setDevStatus("Stored developer key is no longer valid (revoked or regenerated)");
 			}
 		}
 		catch (Exception ex)
 		{
-			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevLicenseVerified(false, null);
 			frame.setDevStatus("Could not verify developer key - Rift server unreachable");
 		}
 	}
@@ -462,7 +462,7 @@ public class RiftLauncher
 			{
 				return true;
 			}
-			frame.setDevLicenseVerified(false, null, null);
+			frame.setDevLicenseVerified(false, null);
 			frame.setDevStatus(license.isValid()
 				? "Developer key belongs to a different account - launching in standard mode"
 				: "Developer key rejected - launching in standard mode");

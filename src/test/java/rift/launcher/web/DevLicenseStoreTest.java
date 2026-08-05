@@ -107,13 +107,4 @@ public class DevLicenseStoreTest
 		assertFalse(file.exists());
 		assertNull(store.load());
 	}
-
-	@Test
-	public void maskShowsOnlyTheLastFourCharacters()
-	{
-		String masked = DevLicenseStore.mask(KEY);
-		assertFalse("masking must not reveal the key", masked.contains(KEY));
-		assertTrue(masked.endsWith("4567"));
-		assertEquals("", DevLicenseStore.mask(null));
-	}
 }
