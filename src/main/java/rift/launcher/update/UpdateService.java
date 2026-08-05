@@ -289,8 +289,20 @@ public class UpdateService
 		}
 		catch (Exception ex)
 		{
-			// Some filesystems cannot move atomically; a plain replace is still better than a partial write.
-			Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			try
+			{
+				// Some filesystems cannot move atomically; a plain replace still beats a partial write.
+				Files.move(tmp.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
+			}
+			catch (IOException fallbackFailed)
+			{
+				// Windows holds the jar open while a client is running, so both moves fail. The install
+				// is untouched and the next check retries -- but the staging file must not be left
+				// behind, or a locked jar quietly accumulates a 30MB .new file on every attempt.
+				//noinspection ResultOfMethodCallIgnored
+				tmp.delete();
+				throw fallbackFailed;
+			}
 		}
 	}
 
