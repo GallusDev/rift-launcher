@@ -93,6 +93,44 @@ public final class RiftApiClient
 		}
 	}
 
+	/**
+	 * {@code GET /api/v1/releases/latest?channel=…&platform=…} — the newest published build.
+	 *
+	 * <p>Public: no Bearer token, because an update check must work before (or without) sign-in.
+	 * Returns {@code null} when the server has no releases yet (404), which is a normal state rather
+	 * than a failure — a fresh deployment simply has nothing to offer.
+	 */
+	public Release.Latest latestRelease(String channel, String platform) throws IOException, ApiException
+	{
+		String url = baseUrl + "/api/v1/releases/latest?channel=" + channel
+			+ (platform == null ? "" : "&platform=" + platform);
+		Http.Reply reply = http.send("GET", url, new HashMap<>(), null);
+		if (reply.status() == 404)
+		{
+			return null;
+		}
+		if (reply.status() / 100 != 2)
+		{
+			throw toApiException(reply);
+		}
+		return GSON.fromJson(reply.text(), Release.Latest.class);
+	}
+
+	/**
+	 * Downloads a release's bytes. {@code /download?release=<id>} answers with a redirect to storage,
+	 * which the transport follows.
+	 */
+	public byte[] downloadRelease(String releaseId) throws IOException, ApiException
+	{
+		Http.Reply reply = http.send("GET", baseUrl + "/api/v1/download?release=" + releaseId,
+			new HashMap<>(), null);
+		if (reply.status() / 100 != 2)
+		{
+			throw toApiException(reply);
+		}
+		return reply.body();
+	}
+
 	static ApiException toApiException(Http.Reply reply)
 	{
 		String code = null;

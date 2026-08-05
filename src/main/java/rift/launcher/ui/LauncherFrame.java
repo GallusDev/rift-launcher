@@ -55,6 +55,15 @@ public class LauncherFrame extends JFrame
 	private Runnable onRepairJagex = () -> { };
 	private Runnable onRemoveJagex = () -> { };
 
+	// Updates: status plus a manual check. The client updates silently; a launcher update needs the
+	// installer, because a running process cannot replace the jar it is executing from.
+	private final JPanel updatePanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+	private final JLabel updateStatusLabel = new JLabel("Updates: not checked");
+	private final JButton updateCheckButton = new JButton("Check for updates");
+	private final JButton updateInstallButton = new JButton("Install launcher update");
+	private Runnable onCheckUpdates = () -> { };
+	private Runnable onInstallLauncherUpdate = () -> { };
+
 	// Developer section: entering a valid, unrevoked license key is what unlocks developer mode.
 	// One row per logical control group -- a single FlowLayout row would wrap on a narrow window and
 	// FlowLayout reports only one row's height, which silently clips whatever wrapped.
@@ -133,6 +142,14 @@ public class LauncherFrame extends JFrame
 
 	private JPanel buildSettingsTab()
 	{
+		updatePanel.setBorder(BorderFactory.createTitledBorder("Updates"));
+		updateCheckButton.addActionListener(e -> onCheckUpdates.run());
+		updateInstallButton.addActionListener(e -> onInstallLauncherUpdate.run());
+		updateInstallButton.setEnabled(false);
+		updatePanel.add(updateStatusLabel);
+		updatePanel.add(updateCheckButton);
+		updatePanel.add(updateInstallButton);
+
 		jagexPanel.setBorder(BorderFactory.createTitledBorder("Jagex Launcher integration"));
 		jagexRepairButton.addActionListener(e -> onRepairJagex.run());
 		jagexRemoveButton.addActionListener(e -> onRemoveJagex.run());
@@ -176,8 +193,10 @@ public class LauncherFrame extends JFrame
 		// Stacked top-down so each section keeps its natural height and the rest is empty space.
 		JPanel column = new JPanel();
 		column.setLayout(new BoxLayout(column, BoxLayout.Y_AXIS));
+		updatePanel.setAlignmentX(LEFT_ALIGNMENT);
 		jagexPanel.setAlignmentX(LEFT_ALIGNMENT);
 		devPanel.setAlignmentX(LEFT_ALIGNMENT);
+		column.add(updatePanel);
 		column.add(jagexPanel);
 		column.add(devPanel);
 		column.add(Box.createVerticalGlue());
@@ -216,6 +235,27 @@ public class LauncherFrame extends JFrame
 	public void setOnSignOut(Runnable onSignOut)
 	{
 		this.onSignOut = onSignOut;
+	}
+
+	public void setOnCheckUpdates(Runnable onCheckUpdates)
+	{
+		this.onCheckUpdates = onCheckUpdates;
+	}
+
+	public void setOnInstallLauncherUpdate(Runnable onInstallLauncherUpdate)
+	{
+		this.onInstallLauncherUpdate = onInstallLauncherUpdate;
+	}
+
+	/** Shows the update state; the install button only lights up when a launcher update is waiting. */
+	public void setUpdateStatus(String text, boolean launcherUpdateAvailable, boolean checkEnabled)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			updateStatusLabel.setText(text);
+			updateInstallButton.setEnabled(launcherUpdateAvailable);
+			updateCheckButton.setEnabled(checkEnabled);
+		});
 	}
 
 	public void setOnRepairJagex(Runnable onRepairJagex)

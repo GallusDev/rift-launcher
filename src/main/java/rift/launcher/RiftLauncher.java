@@ -18,6 +18,8 @@ import rift.launcher.launch.ClientLauncher;
 import rift.launcher.launch.JxCredentials;
 import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
+import rift.launcher.update.UpdateService;
+import rift.launcher.web.Release;
 import rift.launcher.web.ApiException;
 import rift.launcher.web.AuthFlow;
 import rift.launcher.web.AuthStore;
@@ -61,6 +63,11 @@ public class RiftLauncher
 	private static final JagexIntegration JAGEX =
 		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
 
+	/** This build's version, used to decide whether the launcher channel has something newer. */
+	private static final String LAUNCHER_VERSION = "1.0.0";
+	private static final UpdateService UPDATES = new UpdateService(API, RIFT_DIR, LAUNCHER_VERSION);
+	private static final AtomicReference<Release> PENDING_LAUNCHER_UPDATE = new AtomicReference<>();
+
 	public static void main(String[] args)
 	{
 		// Installer entry points. These run headless and exit, so they must come before any UI work.
@@ -91,6 +98,8 @@ public class RiftLauncher
 			frame.setOnSignOut(() -> signOut(frame));
 			frame.setOnVerifyDevKey(key -> verifyAndSaveDevKey(frame, key));
 			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
+			frame.setOnCheckUpdates(() -> checkUpdates(frame));
+			frame.setOnInstallLauncherUpdate(() -> installLauncherUpdate(frame));
 			frame.setOnRepairJagex(() -> repairJagex(frame));
 			frame.setOnRemoveJagex(() -> removeJagex(frame));
 			frame.setAccounts(store.load());
@@ -102,6 +111,10 @@ public class RiftLauncher
 
 			// Repair a config reverted by a RuneLite update, so the next Play lands on Rift again.
 			new Thread(() -> refreshJagexIntegration(frame, true), "rift-jagex-check").start();
+
+			// Check for updates on start. The client is swapped silently (it is not running); a launcher
+			// update only arms the install button, since replacing a running launcher needs the installer.
+			new Thread(() -> checkUpdates(frame), "rift-update-check").start();
 
 			// Re-check the license while signed in, so a ban that happens after sign-in is reflected
 			// (the client reacts via its own poll; the launcher needs its own).
@@ -531,6 +544,57 @@ public class RiftLauncher
 			}
 			refreshJagexIntegration(frame, false);
 		}, "rift-jagex-remove").start();
+	}
+
+	/**
+	 * Runs an update check off the UI thread. Failures are reported in the status line and never
+	 * interrupt anything — someone should always be able to play on the build they already have.
+	 */
+	private static void checkUpdates(LauncherFrame frame)
+	{
+		frame.setUpdateStatus("Updates: checking...", false, false);
+		UpdateService.Result result = UPDATES.check();
+		PENDING_LAUNCHER_UPDATE.set(result.getLauncherUpdate());
+		frame.setUpdateStatus("Updates: " + result.getMessage(), result.getLauncherUpdate() != null, true);
+		if (result.isClientUpdated())
+		{
+			frame.setStatus("Client updated - the new version is used on your next launch");
+		}
+	}
+
+	/**
+	 * Downloads the launcher installer and hands over to it. The launcher exits so the installer can
+	 * replace files it would otherwise hold open.
+	 */
+	private static void installLauncherUpdate(LauncherFrame frame)
+	{
+		Release update = PENDING_LAUNCHER_UPDATE.get();
+		if (update == null)
+		{
+			return;
+		}
+		new Thread(() ->
+		{
+			frame.setUpdateStatus("Updates: downloading launcher " + update.getVersion() + "...", false, false);
+			File installer = UPDATES.downloadLauncherInstaller(update);
+			if (installer == null)
+			{
+				frame.setUpdateStatus("Updates: launcher download failed", true, true);
+				return;
+			}
+			try
+			{
+				new ProcessBuilder(installer.getAbsolutePath()).start();
+				// Give the installer a moment to appear before this process disappears under it.
+				Thread.sleep(1500);
+				System.exit(0);
+			}
+			catch (Exception ex)
+			{
+				log.warn("Rift: could not start the launcher installer ({})", ex.getClass().getSimpleName());
+				frame.setUpdateStatus("Updates: could not start the installer", true, true);
+			}
+		}, "rift-launcher-update").start();
 	}
 
 	/** Ban: show the account-banned notice and close the launcher entirely. */
