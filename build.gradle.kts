@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "rift.launcher"
-version = "1.0.0"
+version = "1.0.4"
 
 // Match the version the fork's catalog pinned (kept consistent with the client's lombok).
 lombok {
@@ -22,6 +22,16 @@ java {
 tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }
 tasks.withType<Javadoc>().configureEach { options.encoding = "UTF-8" }
 tasks.withType<Test>().configureEach { systemProperty("file.encoding", "UTF-8") }
+
+// Stamp the build version into a resource so the running launcher can report it. This is the single
+// source of truth: the version used to live here AND as a constant in RiftLauncher, and the two had
+// already drifted (1.0.0 vs 1.0.3).
+tasks.processResources {
+    inputs.property("projectVersion", project.version)
+    filesMatching("rift/launcher/version.properties") {
+        filter { it.replace("\${project.version}", project.version.toString()) }
+    }
+}
 
 repositories {
     mavenCentral()
