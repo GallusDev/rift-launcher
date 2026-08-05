@@ -91,6 +91,44 @@ public class UpdateServiceTest
 	}
 
 	@Test
+	public void clientIsFetchedWhenTheJarIsMissing()
+	{
+		// The installer no longer ships the client, so a fresh install has no jar and must download.
+		assertTrue(UpdateService.needsClientDownload(false, null, "1.12.35"));
+		// Even with a recorded version, an absent jar has to be refetched -- a recorded version with no
+		// file is a broken install, not an up-to-date one.
+		assertTrue(UpdateService.needsClientDownload(false, "1.12.35", "1.12.35"));
+	}
+
+	@Test
+	public void clientIsFetchedWhenTheRecordedVersionIsUnknown()
+	{
+		// Lost or corrupt versions.json self-heals rather than leaving the launcher unable to start.
+		assertTrue(UpdateService.needsClientDownload(true, null, "1.12.35"));
+	}
+
+	@Test
+	public void clientIsLeftAloneWhenItMatches()
+	{
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", "1.12.35"));
+	}
+
+	@Test
+	public void clientIsFetchedWhenTheServerAdvertisesSomethingElse()
+	{
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.35", "1.12.36"));
+		// A deliberate rollback is still a change worth applying.
+		assertTrue(UpdateService.needsClientDownload(true, "1.12.36", "1.12.35"));
+	}
+
+	@Test
+	public void nothingIsFetchedWhenTheServerAdvertisesNothing()
+	{
+		assertFalse(UpdateService.needsClientDownload(false, null, null));
+		assertFalse(UpdateService.needsClientDownload(true, "1.12.35", ""));
+	}
+
+	@Test
 	public void isUpdateOnlyWhenTheVersionActuallyDiffers()
 	{
 		assertFalse(InstalledVersions.isUpdate("1.0.0", "1.0.0"));

@@ -116,7 +116,32 @@ public class UpdateService
 		return new Result(clientUpdated, launcherUpdate, message.toString().trim());
 	}
 
-	/** Downloads and swaps the client jar when the server advertises a different version. */
+	/**
+	 * Decides whether the client needs downloading.
+	 *
+	 * <p>The client is <b>not</b> shipped in the installer — the launcher is its only source. That is
+	 * what stops the two disagreeing: previously the installer overwrote the jar without touching the
+	 * recorded version, so a launcher update could silently downgrade an auto-updated client and then
+	 * report "up to date" forever.
+	 *
+	 * <p>A missing jar means a fresh install (or a broken one) and must be fetched. An unknown recorded
+	 * version is treated the same way, so a lost or corrupt versions.json self-heals instead of leaving
+	 * the launcher unable to start a client.
+	 */
+	static boolean needsClientDownload(boolean jarPresent, String installedVersion, String availableVersion)
+	{
+		if (availableVersion == null || availableVersion.isEmpty())
+		{
+			return false;
+		}
+		if (!jarPresent || installedVersion == null)
+		{
+			return true;
+		}
+		return InstalledVersions.isUpdate(installedVersion, availableVersion);
+	}
+
+	/** Downloads the client when it is missing, or when the server advertises a different version. */
 	private boolean updateClient(InstalledVersions versions, StringBuilder message) throws Exception
 	{
 		Release.Latest latest = api.latestRelease(CHANNEL_CLIENT, PLATFORM_WINDOWS);
@@ -130,31 +155,26 @@ public class UpdateService
 			return false;
 		}
 
-		// First run after an install: adopt the advertised version instead of re-downloading what the
-		// installer just placed.
-		if (versions.getClientVersion() == null)
-		{
-			versions.setClientVersion(latest.getVersion());
-			versions.save(versionsFile());
-			return false;
-		}
-		if (!InstalledVersions.isUpdate(versions.getClientVersion(), latest.getVersion()))
+		File clientJar = new File(riftDir, "rift-client.jar");
+		if (!needsClientDownload(clientJar.isFile(), versions.getClientVersion(), latest.getVersion()))
 		{
 			return false;
 		}
+		boolean firstFetch = !clientJar.isFile();
 
 		byte[] bytes = api.downloadRelease(release.getId());
 		if (!verify(bytes, release, "client"))
 		{
-			message.append("Client update rejected (integrity check failed). ");
+			message.append("Client download rejected (integrity check failed). ");
 			return false;
 		}
 
-		replaceAtomically(new File(riftDir, "rift-client.jar"), bytes);
+		replaceAtomically(clientJar, bytes);
 		versions.setClientVersion(latest.getVersion());
 		versions.save(versionsFile());
-		log.info("Rift: client updated to {}", latest.getVersion());
-		message.append("Client updated to ").append(latest.getVersion()).append(". ");
+		log.info("Rift: client {} to {}", firstFetch ? "downloaded" : "updated", latest.getVersion());
+		message.append(firstFetch ? "Client downloaded (" : "Client updated to ")
+			.append(latest.getVersion()).append(firstFetch ? "). " : ". ");
 		return true;
 	}
 
