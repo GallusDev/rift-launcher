@@ -16,6 +16,8 @@ import rift.launcher.account.AccountStore;
 import rift.launcher.crypto.DpapiCrypto;
 import rift.launcher.launch.ClientLauncher;
 import rift.launcher.launch.JxCredentials;
+import rift.launcher.proxy.ProxyEntry;
+import rift.launcher.proxy.ProxyStore;
 import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
 import rift.launcher.update.UpdateService;
@@ -42,6 +44,7 @@ public class RiftLauncher
 	private static final File ACCOUNTS_FILE = new File(RIFT_DIR, "accounts.dat");
 	private static final File AUTH_FILE = new File(RIFT_DIR, "auth.dat");
 	private static final File DEV_LICENSE_FILE = new File(RIFT_DIR, "devlicense.dat");
+	private static final File PROXIES_FILE = new File(RIFT_DIR, "proxies.dat");
 	private static final File CLIENT_JAR = new File(RIFT_DIR, "rift-client.jar");
 
 	/** How often the signed-in launcher re-checks the license, so a mid-session ban is reflected. */
@@ -60,6 +63,7 @@ public class RiftLauncher
 		new AuthStore(AUTH_FILE, new DpapiCrypto()));
 	private static final RiftApiClient API = new RiftApiClient(RiftConfig.apiBaseUrl(), new JdkHttp());
 	private static final DevLicenseStore DEV_LICENSE = new DevLicenseStore(DEV_LICENSE_FILE, new DpapiCrypto());
+	private static final ProxyStore PROXIES = new ProxyStore(PROXIES_FILE, new DpapiCrypto());
 	private static final JagexIntegration JAGEX =
 		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
 
@@ -721,7 +725,8 @@ public class RiftLauncher
 				// Gate developer mode per launch: the key is re-verified here, so revoking it takes
 				// effect on the next launch rather than whenever the launcher happens to restart.
 				boolean developerMode = developerModeForLaunch(frame);
-				Process process = launchWithSession(clientLauncher, creds, javaw, developerMode);
+				Process process = launchWithSession(clientLauncher, creds, javaw, developerMode,
+					proxyFor(account));
 				frame.setAccountStatus(characterId, developerMode ? "Playing (dev)" : "Playing");
 				process.waitFor();
 				frame.setAccountStatus(characterId, "Ready");
@@ -744,8 +749,29 @@ public class RiftLauncher
 	 * Launches with a fresh Rift session handed off over stdin when signed in, else a plain Jagex-only
 	 * launch. Refreshes the access token first so the client starts with a full-lifetime token.
 	 */
+	/**
+	 * The proxy config for an account's launch, or null to connect directly. Resolved per launch so a
+	 * proxy edited since the launcher started is picked up without a restart.
+	 */
+	private static LaunchHandoff.ProxyConfig proxyFor(Account account)
+	{
+		if (account.getProxyId() == null)
+		{
+			return null;
+		}
+		ProxyEntry proxy = PROXIES.byId(account.getProxyId());
+		if (proxy == null)
+		{
+			// Assigned to a proxy that has since been deleted. Launching directly would silently use
+			// the real IP, which is the opposite of what the user asked for -- so refuse instead.
+			throw new IllegalStateException("assigned proxy no longer exists");
+		}
+		return new LaunchHandoff.ProxyConfig(proxy.getHost(), proxy.getPort(),
+			proxy.getUsername(), proxy.getPassword());
+	}
+
 	private static Process launchWithSession(ClientLauncher clientLauncher, JxCredentials creds, File javaw,
-		boolean developerMode) throws Exception
+		boolean developerMode, LaunchHandoff.ProxyConfig proxy) throws Exception
 	{
 		if (SESSION.get() != null)
 		{

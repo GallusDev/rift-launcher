@@ -13,4 +13,5 @@ public class Account
 	String displayName;   // JX_DISPLAY_NAME
 	String sessionId;     // JX_SESSION_ID (captured Jagex game session)
 	long addedAt;         // epoch millis
+	String proxyId;       // ProxyEntry id, or null to connect directly
 }
