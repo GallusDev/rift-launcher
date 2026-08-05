@@ -17,6 +17,12 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
+// Sources are UTF-8. Without this javac uses the platform default (Cp1252 on Windows), which silently
+// corrupts non-ASCII string literals -- a bullet character in the UI came out as mojibake.
+tasks.withType<JavaCompile>().configureEach { options.encoding = "UTF-8" }
+tasks.withType<Javadoc>().configureEach { options.encoding = "UTF-8" }
+tasks.withType<Test>().configureEach { systemProperty("file.encoding", "UTF-8") }
+
 repositories {
     mavenCentral()
     // flatlaf here is net.runelite:flatlaf, published to the RuneLite maven repo.
