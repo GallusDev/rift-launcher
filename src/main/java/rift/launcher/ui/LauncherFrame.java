@@ -25,6 +25,7 @@ import javax.swing.ListSelectionModel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import rift.launcher.account.Account;
+import rift.launcher.proxy.ProxyEntry;
 
 /**
  * The launcher window: a <b>Home</b> tab listing accounts with a Launch button on each row, and a
@@ -44,6 +45,15 @@ public class LauncherFrame extends JFrame
 	private Consumer<Account> onLaunch = account -> { };
 	private Runnable onSignIn = () -> { };
 	private Runnable onSignOut = () -> { };
+
+	// Proxies: the table plus the actions that operate on it.
+	private final ProxyTableModel proxyModel = new ProxyTableModel();
+	private JTable proxyTable;
+	private final JLabel proxyStatus = new JLabel("No proxies configured");
+	private Consumer<List<ProxyEntry>> onAddProxies = list -> { };
+	private Consumer<ProxyEntry> onDeleteProxy = p -> { };
+	private Consumer<List<ProxyEntry>> onTestProxies = list -> { };
+	private java.util.function.BiConsumer<Account, String> onAssignProxy = (a, id) -> { };
 
 	// Jagex Launcher integration: current state plus manual repair/remove. Repair must live here
 	// because once the config reverts, the Jagex Launcher boots RuneLite rather than Rift -- so the
@@ -88,6 +98,7 @@ public class LauncherFrame extends JFrame
 
 		JTabbedPane tabs = new JTabbedPane();
 		tabs.addTab("Home", buildHomeTab());
+		tabs.addTab("Proxies", buildProxiesTab());
 		tabs.addTab("Settings", buildSettingsTab());
 
 		// The status line sits outside the tabs so feedback stays visible whichever tab is open.
@@ -122,8 +133,41 @@ public class LauncherFrame extends JFrame
 		table.getColumnModel().getColumn(0).setPreferredWidth(220);
 		table.getColumnModel().getColumn(1).setPreferredWidth(160);
 		table.getColumnModel().getColumn(2).setPreferredWidth(120);
+		table.getColumnModel().getColumn(AccountTableModel.PROXY_COLUMN).setPreferredWidth(130);
 		table.getColumnModel().getColumn(AccountTableModel.LAUNCH_COLUMN).setPreferredWidth(110);
 		table.getColumnModel().getColumn(AccountTableModel.LAUNCH_COLUMN).setMaxWidth(140);
+
+		// Assign a proxy straight from the account row. The editor is rebuilt on each edit so a proxy
+		// added since the window opened appears without a restart.
+		javax.swing.JComboBox<String> proxyBox = new javax.swing.JComboBox<>();
+		table.getColumnModel().getColumn(AccountTableModel.PROXY_COLUMN)
+			.setCellEditor(new javax.swing.DefaultCellEditor(proxyBox)
+			{
+				@Override
+				public java.awt.Component getTableCellEditorComponent(JTable t, Object value,
+					boolean selected, int row, int column)
+				{
+					proxyBox.removeAllItems();
+					for (String choice : model.proxyChoices())
+					{
+						proxyBox.addItem(choice);
+					}
+					proxyBox.setSelectedItem(value);
+					return super.getTableCellEditorComponent(t, value, selected, row, column);
+				}
+
+				@Override
+				public boolean stopCellEditing()
+				{
+					int row = table.convertRowIndexToModel(table.getEditingRow());
+					if (row >= 0)
+					{
+						String choice = String.valueOf(proxyBox.getSelectedItem());
+						onAssignProxy.accept(model.accountAt(row), model.proxyIdForChoice(choice));
+					}
+					return super.stopCellEditing();
+				}
+			});
 
 		// One Launch button per row, so the action sits with the account it launches.
 		new ButtonColumn(table, AccountTableModel.LAUNCH_COLUMN, row ->
@@ -140,6 +184,127 @@ public class LauncherFrame extends JFrame
 		home.add(accountBar, BorderLayout.NORTH);
 		home.add(new JScrollPane(table), BorderLayout.CENTER);
 		return home;
+	}
+
+	private JPanel buildProxiesTab()
+	{
+		proxyTable = new JTable(proxyModel);
+		proxyTable.setRowHeight(24);
+		proxyTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+		// Colour the status so a dead proxy is visible without reading every row.
+		proxyTable.getColumnModel().getColumn(ProxyTableModel.STATUS_COLUMN)
+			.setCellRenderer(new javax.swing.table.DefaultTableCellRenderer()
+			{
+				@Override
+				public java.awt.Component getTableCellRendererComponent(JTable table, Object value,
+					boolean selected, boolean focus, int row, int column)
+				{
+					java.awt.Component c = super.getTableCellRendererComponent(
+						table, value, selected, focus, row, column);
+					if (!selected)
+					{
+						String text = String.valueOf(value);
+						c.setForeground("Working".equals(text) ? new java.awt.Color(0x4C, 0xAF, 0x50)
+							: "Not tested".equals(text) ? table.getForeground()
+							: new java.awt.Color(0xE5, 0x73, 0x73));
+					}
+					return c;
+				}
+			});
+
+		JButton add = new JButton("Add");
+		add.addActionListener(e ->
+		{
+			ProxyEntry entry = ProxyDialogs.addOne(this);
+			if (entry != null)
+			{
+				onAddProxies.accept(java.util.Collections.singletonList(entry));
+			}
+		});
+
+		JButton bulkAdd = new JButton("Bulk add");
+		bulkAdd.setToolTipText("Paste a whole provider list at once");
+		bulkAdd.addActionListener(e ->
+		{
+			List<ProxyEntry> entries = ProxyDialogs.addMany(this);
+			if (!entries.isEmpty())
+			{
+				onAddProxies.accept(entries);
+			}
+		});
+
+		JButton delete = new JButton("Delete");
+		delete.addActionListener(e -> selectedProxies().forEach(onDeleteProxy));
+
+		JButton test = new JButton("Test");
+		test.addActionListener(e ->
+		{
+			List<ProxyEntry> selected = selectedProxies();
+			onTestProxies.accept(selected.isEmpty() ? proxyModel.all() : selected);
+		});
+
+		JButton testAll = new JButton("Test all");
+		testAll.addActionListener(e -> onTestProxies.accept(proxyModel.all()));
+
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		actions.add(add);
+		actions.add(bulkAdd);
+		actions.add(delete);
+		actions.add(test);
+		actions.add(testAll);
+		actions.add(proxyStatus);
+
+		JPanel tab = new JPanel(new BorderLayout());
+		tab.add(new JScrollPane(proxyTable), BorderLayout.CENTER);
+		tab.add(actions, BorderLayout.SOUTH);
+		return tab;
+	}
+
+	private List<ProxyEntry> selectedProxies()
+	{
+		List<ProxyEntry> selected = new ArrayList<>();
+		for (int row : proxyTable.getSelectedRows())
+		{
+			selected.add(proxyModel.proxyAt(proxyTable.convertRowIndexToModel(row)));
+		}
+		return selected;
+	}
+
+	public void setOnAddProxies(Consumer<List<ProxyEntry>> onAddProxies)
+	{
+		this.onAddProxies = onAddProxies;
+	}
+
+	public void setOnDeleteProxy(Consumer<ProxyEntry> onDeleteProxy)
+	{
+		this.onDeleteProxy = onDeleteProxy;
+	}
+
+	public void setOnTestProxies(Consumer<List<ProxyEntry>> onTestProxies)
+	{
+		this.onTestProxies = onTestProxies;
+	}
+
+	public void setOnAssignProxy(java.util.function.BiConsumer<Account, String> onAssignProxy)
+	{
+		this.onAssignProxy = onAssignProxy;
+	}
+
+	/** Refreshes the proxy table and the account-row dropdown, which lists the same proxies. */
+	public void setProxies(List<ProxyEntry> proxies)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			proxyModel.setProxies(proxies);
+			model.setProxies(proxies);
+			proxyStatus.setText(proxies.isEmpty()
+				? "No proxies configured" : proxies.size() + " configured");
+		});
+	}
+
+	public void setProxyStatus(String text)
+	{
+		SwingUtilities.invokeLater(() -> proxyStatus.setText(text));
 	}
 
 	private JPanel buildSettingsTab()

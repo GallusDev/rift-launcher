@@ -17,6 +17,7 @@ import rift.launcher.crypto.DpapiCrypto;
 import rift.launcher.launch.ClientLauncher;
 import rift.launcher.launch.JxCredentials;
 import rift.launcher.proxy.ProxyEntry;
+import rift.launcher.proxy.ProxyTester;
 import rift.launcher.proxy.ProxyStore;
 import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
@@ -104,6 +105,11 @@ public class RiftLauncher
 			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
 			frame.setOnCheckUpdates(() -> checkUpdates(frame, false));
 			frame.setOnInstallLauncherUpdate(() -> installLauncherUpdate(frame));
+			frame.setOnAddProxies(list -> addProxies(frame, list));
+			frame.setOnDeleteProxy(proxy -> deleteProxy(frame, proxy));
+			frame.setOnTestProxies(list -> testProxies(frame, list));
+			frame.setOnAssignProxy((account, proxyId) -> assignProxy(store, frame, account, proxyId));
+			frame.setProxies(PROXIES.load());
 			frame.setOnRepairJagex(() -> repairJagex(frame));
 			frame.setOnRemoveJagex(() -> removeJagex(frame));
 			frame.setAccounts(store.load());
@@ -642,6 +648,96 @@ public class RiftLauncher
 				frame.setUpdateStatus("Updates: could not start the installer", true, true);
 			}
 		}, "rift-launcher-update").start();
+	}
+
+	private static void addProxies(LauncherFrame frame, List<ProxyEntry> entries)
+	{
+		try
+		{
+			int added = PROXIES.add(entries);
+			frame.setProxies(PROXIES.load());
+			int skipped = entries.size() - added;
+			frame.setProxyStatus(added + " added"
+				+ (skipped > 0 ? ", " + skipped + " already saved" : ""));
+		}
+		catch (Exception ex)
+		{
+			log.warn("Rift: could not save proxies ({})", ex.getClass().getSimpleName());
+			frame.setProxyStatus("Could not save proxies");
+		}
+	}
+
+	private static void deleteProxy(LauncherFrame frame, ProxyEntry proxy)
+	{
+		try
+		{
+			PROXIES.remove(proxy.getId());
+			frame.setProxies(PROXIES.load());
+			frame.setProxyStatus("Deleted " + proxy.getNickname());
+		}
+		catch (Exception ex)
+		{
+			log.warn("Rift: could not delete proxy ({})", ex.getClass().getSimpleName());
+		}
+	}
+
+	/** Tests off the UI thread — a dead proxy takes the full connect timeout to report. */
+	private static void testProxies(LauncherFrame frame, List<ProxyEntry> entries)
+	{
+		if (entries.isEmpty())
+		{
+			frame.setProxyStatus("No proxies to test");
+			return;
+		}
+		new Thread(() ->
+		{
+			frame.setProxyStatus("Testing " + entries.size() + "...");
+			ProxyTester.testAll(entries);
+			int working = 0;
+			for (ProxyEntry entry : entries)
+			{
+				if (entry.getLastStatus() == ProxyEntry.Status.OK)
+				{
+					working++;
+				}
+				try
+				{
+					PROXIES.update(entry);
+				}
+				catch (Exception ex)
+				{
+					log.warn("Rift: could not record proxy test result ({})",
+						ex.getClass().getSimpleName());
+				}
+			}
+			frame.setProxies(PROXIES.load());
+			frame.setProxyStatus(working + " of " + entries.size() + " working");
+		}, "rift-proxy-test-run").start();
+	}
+
+	/** Persists an account's proxy assignment. Account is immutable, so this rebuilds the row. */
+	private static void assignProxy(AccountStore store, LauncherFrame frame, Account account, String proxyId)
+	{
+		try
+		{
+			List<Account> accounts = store.load();
+			for (int i = 0; i < accounts.size(); i++)
+			{
+				Account a = accounts.get(i);
+				if (a.getCharacterId().equals(account.getCharacterId()))
+				{
+					accounts.set(i, new Account(a.getCharacterId(), a.getDisplayName(),
+						a.getSessionId(), a.getAddedAt(), proxyId));
+					break;
+				}
+			}
+			store.save(accounts);
+			frame.setAccounts(accounts);
+		}
+		catch (Exception ex)
+		{
+			log.warn("Rift: could not save the proxy assignment ({})", ex.getClass().getSimpleName());
+		}
 	}
 
 	/** Ban: show the account-banned notice and close the launcher entirely. */

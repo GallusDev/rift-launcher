@@ -11,12 +11,17 @@ import rift.launcher.account.Account;
 public class AccountTableModel extends AbstractTableModel
 {
 	/** The trailing column holds a per-row Launch button rather than text. */
-	private static final String[] COLUMNS = {"Name", "Status", "Session age", "Launch"};
-	public static final int LAUNCH_COLUMN = 3;
+	private static final String[] COLUMNS = {"Name", "Status", "Session age", "Proxy", "Launch"};
+	public static final int PROXY_COLUMN = 3;
+	public static final int LAUNCH_COLUMN = 4;
+
+	/** Shown when an account connects directly. Also the dropdown's first option. */
+	public static final String NO_PROXY = "Direct";
 	private static final String DEFAULT_STATUS = "Ready";
 	private static final long MINUTE_MS = 60_000L;
 
 	private final List<Account> accounts = new ArrayList<>();
+	private final List<rift.launcher.proxy.ProxyEntry> proxies = new ArrayList<>();
 	private final Map<String, String> statuses = new HashMap<>();
 	private final LongSupplier clock;
 
@@ -86,6 +91,8 @@ public class AccountTableModel extends AbstractTableModel
 				return statuses.getOrDefault(a.getCharacterId(), DEFAULT_STATUS);
 			case 2:
 				return formatAge(clock.getAsLong() - a.getAddedAt());
+			case PROXY_COLUMN:
+				return proxyNameFor(a.getProxyId());
 			case LAUNCH_COLUMN:
 				return "Launch";
 			default:
@@ -93,11 +100,64 @@ public class AccountTableModel extends AbstractTableModel
 		}
 	}
 
-	/** Only the Launch column is "editable" — that is how Swing routes clicks to a cell editor. */
+	/** Launch (a button) and Proxy (a dropdown) are the interactive cells. */
 	@Override
 	public boolean isCellEditable(int row, int column)
 	{
-		return column == LAUNCH_COLUMN;
+		return column == LAUNCH_COLUMN || column == PROXY_COLUMN;
+	}
+
+	/** The proxies offered in the per-account dropdown. */
+	public void setProxies(List<rift.launcher.proxy.ProxyEntry> newProxies)
+	{
+		proxies.clear();
+		proxies.addAll(newProxies);
+		fireTableDataChanged();
+	}
+
+	/** Dropdown options: "Direct" plus every saved proxy, by nickname. */
+	public String[] proxyChoices()
+	{
+		String[] choices = new String[proxies.size() + 1];
+		choices[0] = NO_PROXY;
+		for (int i = 0; i < proxies.size(); i++)
+		{
+			choices[i + 1] = proxies.get(i).getNickname();
+		}
+		return choices;
+	}
+
+	/** The proxy id behind a dropdown label, or null for "Direct". */
+	public String proxyIdForChoice(String choice)
+	{
+		for (rift.launcher.proxy.ProxyEntry p : proxies)
+		{
+			if (p.getNickname() != null && p.getNickname().equals(choice))
+			{
+				return p.getId();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * The label for an assigned proxy id. An id with no matching proxy reads as "missing" rather than
+	 * "Direct" -- the account will refuse to launch, and showing "Direct" would hide why.
+	 */
+	String proxyNameFor(String proxyId)
+	{
+		if (proxyId == null)
+		{
+			return NO_PROXY;
+		}
+		for (rift.launcher.proxy.ProxyEntry p : proxies)
+		{
+			if (proxyId.equals(p.getId()))
+			{
+				return p.getNickname();
+			}
+		}
+		return "(missing)";
 	}
 
 	/** Repaints the rows so the session-age column keeps up with the clock. */
