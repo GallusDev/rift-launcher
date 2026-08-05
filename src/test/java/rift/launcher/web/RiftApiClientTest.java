@@ -88,4 +88,25 @@ public class RiftApiClientTest
 			assertEquals(401, e.getStatus());
 		}
 	}
+
+	@Test
+	public void licenseCheckParsesDeveloperFlag() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.reply = "{\"vip\":false,\"max_sessions\":1,\"blocked\":false,\"tier\":\"free\","
+			+ "\"discount_bps\":0,\"developer\":true,\"entitlements\":[]}";
+
+		assertTrue(new RiftApiClient(BASE, http).licenseCheck("JWT").isDeveloper());
+	}
+
+	@Test
+	public void licenseCheckDeveloperDefaultsFalseWhenAbsent() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		// An older server omits the field; the Developer section must stay hidden.
+		http.reply = "{\"vip\":false,\"max_sessions\":1,\"blocked\":false,\"tier\":\"free\","
+			+ "\"discount_bps\":0,\"entitlements\":[]}";
+
+		assertFalse(new RiftApiClient(BASE, http).licenseCheck("JWT").isDeveloper());
+	}
 }

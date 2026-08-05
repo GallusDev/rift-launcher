@@ -104,6 +104,30 @@ public class DevLicenseVerifyTest
 		assertFalse(new RiftApiClient(BASE, http).verifyDevLicense(KEY).isValid());
 	}
 
+	@Test
+	public void sendsBearerSoTheServerCanEnforceOwnership() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.reply = "{\"valid\":true,\"developer_id\":\"dev-123\",\"tier\":\"trial\"}";
+
+		new RiftApiClient(BASE, http).verifyDevLicense(KEY, "JWT-abc");
+
+		// Lets the server check the key belongs to the caller and record misuse attempts.
+		assertEquals("Bearer JWT-abc", http.headers.get("Authorization"));
+	}
+
+	@Test
+	public void omitsBearerWhenThereIsNoSession() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.reply = "{\"valid\":true,\"developer_id\":\"dev-123\",\"tier\":\"trial\"}";
+
+		new RiftApiClient(BASE, http).verifyDevLicense(KEY, null);
+
+		// The header is optional server-side (the SDK has no session), so absent is valid.
+		assertFalse(http.headers.containsKey("Authorization"));
+	}
+
 	@Test(expected = IOException.class)
 	public void transportFailurePropagatesSoCallerCanFailClosed() throws Exception
 	{

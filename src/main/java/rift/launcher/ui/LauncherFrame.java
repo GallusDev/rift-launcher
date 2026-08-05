@@ -2,6 +2,7 @@ package rift.launcher.ui;
 
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
+import java.awt.GridLayout;
 import java.awt.Image;
 import java.net.URL;
 import java.util.ArrayList;
@@ -34,7 +35,9 @@ public class LauncherFrame extends JFrame
 	private Runnable onSignOut = () -> { };
 
 	// Developer section: entering a valid, unrevoked license key is what unlocks developer mode.
-	private final JPanel devPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+	// One row per logical control group -- a single FlowLayout row would wrap on a narrow window and
+	// FlowLayout reports only one row's height, which silently clips whatever wrapped.
+	private final JPanel devPanel = new JPanel(new GridLayout(0, 1));
 	private final JPasswordField devKeyField = new JPasswordField(26);
 	private final JButton devVerifyButton = new JButton("Verify & save");
 	private final JButton devRemoveButton = new JButton("Remove");
@@ -47,7 +50,8 @@ public class LauncherFrame extends JFrame
 	{
 		super("Rift Launcher");
 		setDefaultCloseOperation(EXIT_ON_CLOSE);
-		setSize(720, 460);
+		// Tall enough for the two-row Developer section without squeezing the account table.
+		setSize(720, 520);
 		setLocationRelativeTo(null);
 		setIconImages(loadIcons());
 
@@ -109,12 +113,18 @@ public class LauncherFrame extends JFrame
 		devRemoveButton.addActionListener(e -> onRemoveDevKey.run());
 		// Developer mode stays locked until a key actually verifies.
 		devModeBox.setEnabled(false);
-		devPanel.add(new JLabel("License key:"));
-		devPanel.add(devKeyField);
-		devPanel.add(devVerifyButton);
-		devPanel.add(devRemoveButton);
-		devPanel.add(devModeBox);
-		devPanel.add(devStatusLabel);
+		JPanel devKeyRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		devKeyRow.add(new JLabel("License key:"));
+		devKeyRow.add(devKeyField);
+		devKeyRow.add(devVerifyButton);
+		devKeyRow.add(devRemoveButton);
+
+		JPanel devModeRow = new JPanel(new FlowLayout(FlowLayout.LEFT));
+		devModeRow.add(devModeBox);
+		devModeRow.add(devStatusLabel);
+
+		devPanel.add(devKeyRow);
+		devPanel.add(devModeRow);
 		devPanel.setVisible(false);
 
 		JPanel bottom = new JPanel(new BorderLayout());
@@ -144,10 +154,23 @@ public class LauncherFrame extends JFrame
 		return devModeBox.isEnabled() && devModeBox.isSelected();
 	}
 
-	/** Shows/hides the whole developer section — only signed-in users can hold a developer key. */
+	/**
+	 * Shows/hides the whole developer section, driven by {@code license/check.developer}. Cosmetic: the
+	 * real gate is the license key, verified and bound to this account server-side. Hiding also drops
+	 * any armed developer mode, so an account that loses developer status can't launch with it still
+	 * ticked.
+	 */
 	public void setDeveloperSectionVisible(boolean visible)
 	{
-		SwingUtilities.invokeLater(() -> devPanel.setVisible(visible));
+		SwingUtilities.invokeLater(() ->
+		{
+			devPanel.setVisible(visible);
+			if (!visible)
+			{
+				devModeBox.setSelected(false);
+				devModeBox.setEnabled(false);
+			}
+		});
 	}
 
 	/**
@@ -232,8 +255,10 @@ public class LauncherFrame extends JFrame
 				riftAccountLabel.setText("Rift: not signed in");
 				riftAuthButton.setText("Sign in to Rift");
 			}
-			// Signing out must also drop developer mode, so the next user can't inherit it.
-			devPanel.setVisible(signedIn);
+			// Hide by default and stay hidden until the license check confirms this account is a
+			// developer (setDeveloperSectionVisible). Signing out must also drop developer mode, so
+			// the next account signed in on this machine can't inherit it.
+			devPanel.setVisible(false);
 			if (!signedIn)
 			{
 				devModeBox.setSelected(false);
