@@ -18,6 +18,9 @@ public final class JdkHttp implements Http
 	// against a cleartext HTTP/1.1 dev server. 1.1 is safe against the prod HTTPS host too.
 	private final HttpClient client = HttpClient.newBuilder()
 		.version(HttpClient.Version.HTTP_1_1)
+		// /download answers 302 to storage, and the JDK default is NEVER, so downloads would fail
+		// outright. NORMAL follows redirects but refuses an HTTPS -> HTTP downgrade.
+		.followRedirects(HttpClient.Redirect.NORMAL)
 		.connectTimeout(Duration.ofSeconds(20))
 		.build();
 
