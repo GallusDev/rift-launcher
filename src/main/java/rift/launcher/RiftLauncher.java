@@ -334,7 +334,7 @@ public class RiftLauncher
 			}
 			// Only registered developers see the Developer section.
 			frame.setDeveloperSectionVisible(license.isDeveloper());
-			frame.setStatus("Signed in to Rift as " + name);
+			frame.setStatus("Ready");
 		}
 		catch (Exception ex)
 		{
@@ -344,7 +344,7 @@ public class RiftLauncher
 			// Without a license answer we don't know if this account is a developer — keep it hidden.
 			frame.setDeveloperSectionVisible(false);
 			log.warn("License check failed after sign-in (signed in anyway)", ex);
-			frame.setStatus("Signed in as " + name + " - Rift server unreachable, license unverified");
+			frame.setStatus("Rift server unreachable - license unverified");
 		}
 	}
 
