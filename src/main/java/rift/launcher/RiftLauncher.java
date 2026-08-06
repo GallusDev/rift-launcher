@@ -21,6 +21,7 @@ import rift.launcher.proxy.ProxyTester;
 import rift.launcher.proxy.ProxyStore;
 import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
+import rift.launcher.ui.components.RiftDialog;
 import rift.launcher.update.UpdateService;
 import rift.launcher.web.Release;
 import rift.launcher.web.ApiException;
@@ -587,24 +588,19 @@ public class RiftLauncher
 		SwingUtilities.invokeLater(() ->
 		{
 			StringBuilder message = new StringBuilder();
-			message.append("Rift launcher ").append(update.getVersion()).append(" is available.");
 			String notes = update.getNotesMd();
 			if (notes != null && !notes.trim().isEmpty())
 			{
-				String trimmed = notes.trim();
-				if (trimmed.length() > 300)
-				{
-					trimmed = trimmed.substring(0, 300) + "...";
-				}
-				message.append(System.lineSeparator()).append(System.lineSeparator()).append(trimmed);
+				message.append(shorten(notes.trim(), 300))
+					.append(System.lineSeparator()).append(System.lineSeparator());
 			}
-			message.append(System.lineSeparator()).append(System.lineSeparator())
-				.append("Install it now? Rift will close while the installer runs.");
+			message.append("Rift will close while the installer runs.");
 
-			int choice = javax.swing.JOptionPane.showConfirmDialog(null, message.toString(),
-				"Rift update available", javax.swing.JOptionPane.YES_NO_OPTION,
-				javax.swing.JOptionPane.INFORMATION_MESSAGE);
-			if (choice == javax.swing.JOptionPane.YES_OPTION)
+			// Parented to the frame so it opens over the launcher rather than centred on the screen,
+			// and so it cannot be left behind the window it is asking about.
+			boolean install = RiftDialog.confirm(frame, "Update available",
+				"Rift launcher " + update.getVersion(), message.toString(), "Install now");
+			if (install)
 			{
 				installLauncherUpdate(frame);
 			}
@@ -613,6 +609,24 @@ public class RiftLauncher
 				frame.setStatus("Update postponed - install it any time from Settings");
 			}
 		});
+	}
+
+	/**
+	 * Caps release notes for the update dialog, cutting on a word boundary.
+	 *
+	 * <p>Notes are written on the website and can be any length, so the dialog has to cap them. A
+	 * straight character cut lands mid-word ("...connection wi..."), which reads as a truncated
+	 * download rather than a deliberately shortened summary.
+	 */
+	static String shorten(String text, int max)
+	{
+		if (text == null || text.length() <= max)
+		{
+			return text;
+		}
+		int cut = text.lastIndexOf(' ', max);
+		// A single unbroken run longer than the cap (a URL, say) has no space to fall back to.
+		return text.substring(0, cut <= 0 ? max : cut).trim() + "...";
 	}
 
 	/**
@@ -751,9 +765,8 @@ public class RiftLauncher
 		POLL.shutdownNow();
 		SwingUtilities.invokeLater(() ->
 		{
-			javax.swing.JOptionPane.showMessageDialog(null,
-				"Your Rift account has been banned.\nAll access revoked. Effective immediately.",
-				"Rift", javax.swing.JOptionPane.ERROR_MESSAGE);
+			RiftDialog.message(null, "Account banned",
+				"Your Rift account has been banned.\nAll access revoked. Effective immediately.");
 			System.exit(0);
 		});
 	}

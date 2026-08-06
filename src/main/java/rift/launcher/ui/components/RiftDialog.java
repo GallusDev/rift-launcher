@@ -5,6 +5,7 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.Point;
@@ -18,6 +19,7 @@ import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JTextArea;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import rift.launcher.ui.theme.RiftTheme;
@@ -149,6 +151,68 @@ public class RiftDialog extends JDialog
 		setLocationRelativeTo(getOwner());
 		setVisible(true);
 		return confirmed;
+	}
+
+	/** Themed stand-in for {@code JOptionPane.showMessageDialog}. */
+	public static void message(Component parent, String title, String text)
+	{
+		RiftDialog dialog = new RiftDialog(parent, title, null);
+		dialog.setBody(bodyText(text));
+		dialog.addAction("OK", true, dialog::confirm);
+		dialog.showDialog();
+	}
+
+	/**
+	 * Themed stand-in for a yes/no {@code JOptionPane.showConfirmDialog}; true if confirmed.
+	 *
+	 * <p>Cancelling and closing with Escape both return false, so a dismissed dialog can never be
+	 * read as consent — this backs actions like installing an update over a running launcher.
+	 */
+	public static boolean confirm(Component parent, String title, String subtitle, String text,
+		String confirmText)
+	{
+		RiftDialog dialog = new RiftDialog(parent, title, subtitle);
+		dialog.setBody(bodyText(text));
+		dialog.addCancelAndConfirm(confirmText);
+		return dialog.showDialog();
+	}
+
+	private static final int MIN_BODY_WIDTH = 260;
+	private static final int MAX_BODY_WIDTH = 430;
+
+	/**
+	 * Read-only wrapped body text.
+	 *
+	 * <p>Sized by measuring the text rather than by a column count: a {@code JTextArea} reports its
+	 * preferred width from {@code columns} and not from its content, so a one-line message would open
+	 * a dialog as wide as a long one. Long text is capped and wrapped instead — release notes arrive
+	 * as prose from the server and can be any length, and an uncapped dialog grows past the screen.
+	 */
+	private static JComponent bodyText(String text)
+	{
+		JTextArea area = new JTextArea(text == null ? "" : text);
+		area.setEditable(false);
+		area.setFocusable(false);
+		area.setOpaque(false);
+		area.setFont(RiftTheme.regular(13));
+		area.setForeground(RiftTheme.TEXT_MUTED);
+		area.setBorder(null);
+		area.setLineWrap(true);
+		area.setWrapStyleWord(true);
+
+		FontMetrics fm = area.getFontMetrics(area.getFont());
+		int widest = 0;
+		for (String line : area.getText().split("\n", -1))
+		{
+			widest = Math.max(widest, fm.stringWidth(line));
+		}
+		int width = Math.min(Math.max(widest, MIN_BODY_WIDTH), MAX_BODY_WIDTH);
+
+		// Lay out at the chosen width first: with wrapping on, the preferred height depends on the
+		// width, so asking for it before setting one reports the unwrapped single-line height.
+		area.setSize(width, Short.MAX_VALUE);
+		area.setPreferredSize(new Dimension(width, area.getPreferredSize().height));
+		return area;
 	}
 
 	/** The rounded panel the dialog is drawn on; the window itself is transparent behind it. */

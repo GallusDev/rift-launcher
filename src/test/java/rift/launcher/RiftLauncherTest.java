@@ -16,4 +16,27 @@ public class RiftLauncherTest
 		assertEquals("char-1", creds.getCharacterId());
 		assertEquals("Zezima", creds.getDisplayName());
 	}
+
+	@Test
+	public void shortenLeavesTextUnderTheCapAlone()
+	{
+		assertEquals("Fixed a crash.", RiftLauncher.shorten("Fixed a crash.", 300));
+		assertEquals(null, RiftLauncher.shorten(null, 300));
+	}
+
+	@Test
+	public void shortenCutsOnAWordBoundary()
+	{
+		// The cap falls inside "installer"; the cut backs up to the space before it rather than
+		// leaving a half word.
+		assertEquals("Rift will close while the...",
+			RiftLauncher.shorten("Rift will close while the installer runs.", 27));
+	}
+
+	@Test
+	public void shortenFallsBackToAHardCutWhenThereIsNoSpace()
+	{
+		assertEquals("https://example.com/a...",
+			RiftLauncher.shorten("https://example.com/aaaaaaaaaaaaaaaaaaaa", 21));
+	}
 }
