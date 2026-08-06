@@ -203,20 +203,9 @@ final class ProxyDialogs
 		return new ArrayList<>(result.getParsed());
 	}
 
-	/** A themed stand-in for {@code JOptionPane.showMessageDialog}. */
 	private static void message(Component parent, String title, String text)
 	{
-		JTextArea body = new JTextArea(text);
-		body.setEditable(false);
-		body.setOpaque(false);
-		body.setFont(RiftTheme.regular(13));
-		body.setForeground(RiftTheme.TEXT_MUTED);
-		body.setBorder(null);
-
-		RiftDialog dialog = new RiftDialog(parent, title, null);
-		dialog.setBody(body);
-		dialog.addAction("OK", true, dialog::confirm);
-		dialog.showDialog();
+		RiftDialog.message(parent, title, text);
 	}
 
 	private static JPanel column()
