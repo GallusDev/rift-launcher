@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "rift.launcher"
-version = "1.0.4"
+version = "1.1.0"
 
 // Match the version the fork's catalog pinned (kept consistent with the client's lombok).
 lombok {
