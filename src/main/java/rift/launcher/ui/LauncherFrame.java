@@ -25,8 +25,11 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
 import javax.swing.JCheckBox;
 import javax.swing.JComponent;
+import javax.swing.KeyStroke;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -127,6 +130,13 @@ public class LauncherFrame extends JFrame
 	private Consumer<String> onVerifyDevKey = key -> { };
 	private Runnable onRemoveDevKey = () -> { };
 
+	/**
+	 * Ctrl+D: the offline developer unlock. Deliberately a hidden shortcut rather than a button --
+	 * it is a fallback for when the server cannot answer, not a second way to become a developer, and
+	 * a visible control would invite exactly that reading.
+	 */
+	private Runnable onOfflineDevUnlock = () -> { };
+
 	public LauncherFrame(String version)
 	{
 		super("Rift Launcher - v" + version);
@@ -173,6 +183,11 @@ public class LauncherFrame extends JFrame
 
 		root.add(buildFooter(), BorderLayout.SOUTH);
 		setContentPane(root);
+		// Registered on the root pane with WHEN_IN_FOCUSED_WINDOW so it fires wherever focus sits --
+		// keying it to a component would mean it only worked while that component had focus.
+		getRootPane().registerKeyboardAction(e -> onOfflineDevUnlock.run(),
+			KeyStroke.getKeyStroke(KeyEvent.VK_D, InputEvent.CTRL_DOWN_MASK),
+			JComponent.WHEN_IN_FOCUSED_WINDOW);
 		// Undecorated windows lose OS resizing; put it back on every edge and corner.
 		WindowChrome.makeResizable(this);
 		// Rounded corners: with translucency available the background panel paints them anti-aliased,
@@ -739,6 +754,71 @@ private JPanel buildProxiesTab()
 	}
 
 	/** Whether the user asked for a developer-mode launch. Only meaningful when a key has verified. */
+	public void setOnOfflineDevUnlock(Runnable onOfflineDevUnlock)
+	{
+		this.onOfflineDevUnlock = onOfflineDevUnlock;
+	}
+
+	/**
+	 * Shows the developer section and arms the developer-mode checkbox after an offline unlock.
+	 * <p>
+	 * Separate from {@link #setDevLicenseVerified} because the two mean different things and the status
+	 * text has to say which: one is the server vouching for a key, the other is this machine vouching
+	 * for itself because the server could not be asked.
+	 */
+	public void setOfflineDevUnlocked(String username)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			devPanel.setVisible(true);
+			devModeBox.setEnabled(true);
+			devModeBox.setSelected(true);
+			devStatusLabel.setText("Offline developer unlock active (" + username + ")");
+		});
+	}
+
+	/** The offline-unlock prompt, as a modal owned by this window. */
+	public OfflineDevPrompt promptOfflineDev(boolean setup)
+	{
+		OfflineDevDialog.Result r = OfflineDevDialog.prompt(this, setup);
+		return r == null ? null : new OfflineDevPrompt(r.username, r.password, r.setup);
+	}
+
+	/** What the offline prompt returned. The caller clears the password when done with it. */
+	public static final class OfflineDevPrompt
+	{
+		private final String username;
+		private final char[] password;
+		private final boolean setup;
+
+		OfflineDevPrompt(String username, char[] password, boolean setup)
+		{
+			this.username = username;
+			this.password = password;
+			this.setup = setup;
+		}
+
+		public String getUsername()
+		{
+			return username;
+		}
+
+		public char[] getPassword()
+		{
+			return password;
+		}
+
+		public boolean isSetup()
+		{
+			return setup;
+		}
+
+		public void clear()
+		{
+			java.util.Arrays.fill(password, '\0');
+		}
+	}
+
 	public boolean isDeveloperModeRequested()
 	{
 		return devModeBox.isEnabled() && devModeBox.isSelected();

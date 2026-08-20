@@ -23,6 +23,7 @@ import rift.launcher.jagex.JagexIntegration;
 import rift.launcher.ui.LauncherFrame;
 import rift.launcher.ui.components.RiftDialog;
 import rift.launcher.update.UpdateService;
+import rift.launcher.web.OfflineDevUnlock;
 import rift.launcher.web.Release;
 import rift.launcher.web.ApiException;
 import rift.launcher.web.AuthFlow;
@@ -65,6 +66,32 @@ public class RiftLauncher
 		new AuthStore(AUTH_FILE, new DpapiCrypto()));
 	private static final RiftApiClient API = new RiftApiClient(RiftConfig.apiBaseUrl(), new JdkHttp());
 	private static final DevLicenseStore DEV_LICENSE = new DevLicenseStore(DEV_LICENSE_FILE, new DpapiCrypto());
+
+	/** Offline developer unlock: a local credential for when the API cannot be asked. Ctrl+D. */
+	private static final File DEV_OFFLINE_FILE = new File(RIFT_DIR, "devoffline.dat");
+	private static final OfflineDevUnlock DEV_OFFLINE = new OfflineDevUnlock(DEV_OFFLINE_FILE, new DpapiCrypto());
+
+	/**
+	 * Username of the offline unlock in force, or null.
+	 * <p>
+	 * Held in memory only, so it lasts exactly one launcher session and closing the launcher revokes
+	 * it. Persisting it would turn a stopgap for an unreachable server into a standing entitlement.
+	 */
+	private static final java.util.concurrent.atomic.AtomicReference<String> OFFLINE_DEV =
+		new java.util.concurrent.atomic.AtomicReference<>();
+
+	/**
+	 * Supabase user id the offline unlock was granted under, or null if it was granted while signed
+	 * out.
+	 * <p>
+	 * The unlock is bound to an account rather than dropped on sign-out. Dropping it unconditionally
+	 * was the first attempt and it is stricter than the hazard warrants: the risk is a <em>different</em>
+	 * account inheriting developer mode on a shared machine, and signing out and back in as yourself is
+	 * not that. Making the developer re-enter credentials every time they switch accounts, or simply
+	 * re-authenticate, is friction with nothing bought for it.
+	 */
+	private static final java.util.concurrent.atomic.AtomicReference<String> OFFLINE_DEV_ACCOUNT =
+		new java.util.concurrent.atomic.AtomicReference<>();
 	private static final ProxyStore PROXIES = new ProxyStore(PROXIES_FILE, new DpapiCrypto());
 	private static final JagexIntegration JAGEX =
 		new JagexIntegration(JagexIntegration.defaultRuneLiteDir(), RIFT_DIR);
@@ -104,6 +131,7 @@ public class RiftLauncher
 			frame.setOnSignOut(() -> signOut(frame));
 			frame.setOnVerifyDevKey(key -> verifyAndSaveDevKey(frame, key));
 			frame.setOnRemoveDevKey(() -> removeDevKey(frame));
+			frame.setOnOfflineDevUnlock(() -> offlineDevUnlock(frame));
 			frame.setOnCheckUpdates(() -> checkUpdates(frame, false));
 			frame.setOnInstallLauncherUpdate(() -> installLauncherUpdate(frame));
 			frame.setOnAddProxies(list -> addProxies(frame, list));
@@ -303,6 +331,10 @@ public class RiftLauncher
 		// so leaving it behind would let the next account signed in on this machine inherit developer
 		// mode. The developer re-enters it after signing back in.
 		DEV_LICENSE.clear();
+		// The offline unlock deliberately survives a sign-out. It is bound to the account it was
+		// granted under (see OFFLINE_DEV_ACCOUNT) and dropped in applySession when a different account
+		// signs in, which is the case that actually matters -- signing out and back in as yourself is
+		// not someone inheriting developer mode, and forcing re-entry there is pure friction.
 		frame.setRiftAccount(null);
 		frame.setDevLicenseVerified(false, null);
 		frame.setStatus("Signed out - click Sign in to Rift to switch accounts");
@@ -317,6 +349,7 @@ public class RiftLauncher
 	private static void applySession(LauncherFrame frame, Session session)
 	{
 		SESSION.set(session);
+		dropOfflineUnlockIfAccountChanged();
 		String name = session.getUserName() == null ? "Rift account" : session.getUserName();
 		frame.setRiftAccount(name);
 
@@ -345,7 +378,20 @@ public class RiftLauncher
 			// Without a license answer we don't know if this account is a developer — keep it hidden.
 			frame.setDeveloperSectionVisible(false);
 			log.warn("License check failed after sign-in (signed in anyway)", ex);
-			frame.setStatus("Rift server unreachable - license unverified");
+			// Hiding the section also unticks developer mode, which would silently disarm an offline
+			// unlock -- and the license failure that hides it is the very condition the unlock exists
+			// for. Re-assert it, or say how to get one; a launch that quietly drops to standard mode
+			// shows up much later as "my dev plugins didn't load", with nothing pointing at the cause.
+			String offline = OFFLINE_DEV.get();
+			if (offline != null)
+			{
+				frame.setOfflineDevUnlocked(offline);
+				frame.setStatus("Rift server unreachable - offline developer unlock active");
+			}
+			else
+			{
+				frame.setStatus("Rift server unreachable - license unverified (Ctrl+D for offline dev)");
+			}
 		}
 	}
 
@@ -412,10 +458,106 @@ public class RiftLauncher
 		}, "rift-devkey-verify").start();
 	}
 
+	/**
+	 * Ctrl+D: unlock developer mode from a local credential, for when the Rift API is unreachable.
+	 *
+	 * <p>The normal gate re-verifies the license key against the server at every launch and fails
+	 * closed, which is correct but leaves the launcher unable to load {@code ~/.rift/dev-plugins}
+	 * whenever the dev site is not running — the client starts in standard mode and the developer's
+	 * own plugins are simply absent.
+	 *
+	 * <p>Refused while the server <em>is</em> reachable. That is the important restriction: it keeps
+	 * this a fallback for an unanswerable question rather than a way to sidestep an answer already
+	 * given, so a key the server has actively revoked cannot be re-enabled with it.
+	 */
+	private static void offlineDevUnlock(LauncherFrame frame)
+	{
+		if (LICENSE.get() != null)
+		{
+			frame.setDevStatus("Rift server is reachable - use your developer key");
+			return;
+		}
+
+		boolean setup = !DEV_OFFLINE.isConfigured();
+		LauncherFrame.OfflineDevPrompt entered = frame.promptOfflineDev(setup);
+		if (entered == null)
+		{
+			return;
+		}
+		try
+		{
+			if (entered.isSetup())
+			{
+				DEV_OFFLINE.configure(entered.getUsername(), entered.getPassword());
+				OFFLINE_DEV.set(entered.getUsername());
+				OFFLINE_DEV_ACCOUNT.set(signedInUserId());
+				frame.setOfflineDevUnlocked(entered.getUsername());
+				log.info("Offline developer unlock configured and applied for {}", entered.getUsername());
+				return;
+			}
+			if (DEV_OFFLINE.verify(entered.getUsername(), entered.getPassword()))
+			{
+				OFFLINE_DEV.set(entered.getUsername());
+				OFFLINE_DEV_ACCOUNT.set(signedInUserId());
+				frame.setOfflineDevUnlocked(entered.getUsername());
+				log.info("Offline developer unlock accepted for {}", entered.getUsername());
+			}
+			else
+			{
+				// One message for both wrong username and wrong password: saying which was wrong
+				// tells someone guessing that the other half was right.
+				frame.setDevStatus("Offline developer credentials rejected");
+				log.warn("Offline developer unlock rejected");
+			}
+		}
+		catch (Exception ex)
+		{
+			frame.setDevStatus("Could not save offline developer credentials");
+			log.warn("Offline developer unlock failed ({})", ex.getClass().getSimpleName());
+		}
+		finally
+		{
+			entered.clear();
+		}
+	}
+
+	/** The signed-in Supabase user id, or null when signed out or the token is unreadable. */
+	private static String signedInUserId()
+	{
+		Session session = SESSION.get();
+		return session == null ? null : Jwt.subject(session.getAccessToken());
+	}
+
+	/**
+	 * Drops an offline unlock that was granted under a different account.
+	 * <p>
+	 * This is the case the unlock must not survive: a shared machine where someone else signs in would
+	 * otherwise inherit developer mode without ever knowing the credential. An unlock granted while
+	 * signed out is bound to no account and is dropped as soon as any account signs in, since there is
+	 * nothing to match it against.
+	 */
+	private static void dropOfflineUnlockIfAccountChanged()
+	{
+		if (OFFLINE_DEV.get() == null)
+		{
+			return;
+		}
+		String granted = OFFLINE_DEV_ACCOUNT.get();
+		String current = signedInUserId();
+		if (granted == null || current == null || !granted.equals(current))
+		{
+			log.info("Dropping offline developer unlock: signed in as a different account");
+			OFFLINE_DEV.set(null);
+			OFFLINE_DEV_ACCOUNT.set(null);
+		}
+	}
+
 	/** Forgets the stored key and drops developer mode. */
 	private static void removeDevKey(LauncherFrame frame)
 	{
 		DEV_LICENSE.clear();
+		OFFLINE_DEV.set(null);
+		OFFLINE_DEV_ACCOUNT.set(null);
 		frame.setDevLicenseVerified(false, null);
 		frame.setDevStatus("Developer key removed");
 	}
@@ -471,6 +613,15 @@ public class RiftLauncher
 		if (!frame.isDeveloperModeRequested())
 		{
 			return false;
+		}
+		// An offline unlock stands in for the server's answer, and only while there is no answer to
+		// be had. Checked before the key so a developer working offline is not required to hold a
+		// license key as well as the local credential.
+		String offline = OFFLINE_DEV.get();
+		if (offline != null && LICENSE.get() == null)
+		{
+			log.info("Launching in developer mode via offline unlock ({})", offline);
+			return true;
 		}
 		String key = DEV_LICENSE.load();
 		if (key == null)
@@ -901,6 +1052,18 @@ public class RiftLauncher
 				log.warn("Could not refresh the Rift session ({}); launching without managed plugins",
 					ex.getClass().getSimpleName());
 			}
+		}
+
+		// No session, or it could not be refreshed. Developer mode still has to reach the client, and
+		// it travels only in the handoff -- so send one carrying the flag and no tokens rather than
+		// falling through to a plain launch, which silently discarded it. Managed plugins are already
+		// unavailable in this state; local developer plugins need not be.
+		if (developerMode)
+		{
+			String handoff = new LaunchHandoff(null, null, 0L, RiftConfig.apiBaseUrl(),
+				RiftConfig.SUPABASE_ANON_KEY, RiftConfig.SUPABASE_URL, true).toJson();
+			log.info("Launching with a developer-only handoff (no Rift session)");
+			return clientLauncher.launch(creds, handoff, javaw, CLIENT_JAR);
 		}
 		return clientLauncher.launch(creds, javaw, CLIENT_JAR);
 	}
