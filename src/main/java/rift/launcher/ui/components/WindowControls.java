@@ -13,6 +13,7 @@ import java.awt.event.MouseEvent;
 import javax.swing.JComponent;
 import javax.swing.JFrame;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 import rift.launcher.ui.theme.RiftTheme;
 
 /**
@@ -27,7 +28,8 @@ import rift.launcher.ui.theme.RiftTheme;
  */
 public class WindowControls extends JPanel
 {
-	private enum Kind
+	/** Package-private for ClickHandlingTest. */
+	enum Kind
 	{
 		MINIMISE, MAXIMISE, CLOSE
 	}
@@ -49,13 +51,16 @@ public class WindowControls extends JPanel
 		frame.setExtendedState(maximised ? Frame.NORMAL : Frame.MAXIMIZED_BOTH);
 	}
 
-	private static final class ControlButton extends JComponent
+	/** Package-private for ClickHandlingTest. */
+	static final class ControlButton extends JComponent
 	{
 		private static final int WIDTH = 46;
 		private static final int HEIGHT = 34;
 
 		private final Kind kind;
 		private boolean hovered;
+		/** A left press began on this control, so a release over it is a click. */
+		private boolean pressed;
 
 		ControlButton(Kind kind, Runnable onClick)
 		{
@@ -78,9 +83,26 @@ public class WindowControls extends JPanel
 				}
 
 				@Override
-				public void mouseClicked(MouseEvent e)
+				public void mousePressed(MouseEvent e)
 				{
-					onClick.run();
+					pressed = SwingUtilities.isLeftMouseButton(e);
+				}
+
+				@Override
+				public void mouseReleased(MouseEvent e)
+				{
+					// Fired on release over the control, as a native caption button does -- not in
+					// mouseClicked, which AWT withholds if the pointer moved between press and release,
+					// so a slightly hurried click on Close did nothing. Release rather than press, unlike
+					// the nav rail: closing the window keeps the native chance to cancel by sliding off
+					// the button before letting go. Swing sends the release to the pressed component
+					// even when the pointer has left it, hence the bounds check.
+					boolean click = pressed && SwingUtilities.isLeftMouseButton(e) && contains(e.getPoint());
+					pressed = false;
+					if (click)
+					{
+						onClick.run();
+					}
 				}
 			});
 		}

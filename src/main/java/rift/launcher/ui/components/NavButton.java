@@ -12,6 +12,7 @@ import java.awt.event.MouseEvent;
 import java.util.function.Function;
 import javax.swing.Icon;
 import javax.swing.JComponent;
+import javax.swing.SwingUtilities;
 import rift.launcher.ui.theme.RiftTheme;
 
 /**
@@ -56,9 +57,18 @@ public class NavButton extends JComponent
 			}
 
 			@Override
-			public void mouseClicked(MouseEvent e)
+			public void mousePressed(MouseEvent e)
 			{
-				onClick.run();
+				// On press, not in mouseClicked. AWT only delivers mouseClicked when the pointer has
+				// barely moved between press and release, so a quick click made while already heading
+				// for the next item was silently dropped and had to be repeated. Switching page is
+				// nothing that needs a chance to cancel, so there is no reason to wait for the release
+				// -- browser tabs switch on press for the same reason. Left button only: a right-click
+				// was switching pages too.
+				if (SwingUtilities.isLeftMouseButton(e))
+				{
+					onClick.run();
+				}
 			}
 		});
 	}
