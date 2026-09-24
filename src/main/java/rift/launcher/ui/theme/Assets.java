@@ -9,8 +9,6 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import javax.imageio.ImageIO;
-import javax.swing.Icon;
-import javax.swing.ImageIcon;
 
 /**
  * Loads the branding art, scaled and cached.
@@ -20,14 +18,20 @@ import javax.swing.ImageIcon;
  * {@code resources/rift/launcher/brand/} and is picked up on the next build with no code change.
  *
  * <p>Source art is generated at ~1500px on a large transparent canvas; it is cropped and resized
- * into the resource folder ahead of time (see the brand README) rather than at runtime, so startup
- * does no image processing.
+ * into the resource folder ahead of time rather than at runtime, so startup does no image processing
+ * and the jar does not carry the full-size originals. Sources live outside the jar, in the project's
+ * {@code assets/} folder.
+ *
+ * <p>Crop to the <em>visible</em> alpha, not to every non-zero pixel. The current wordmark carries a
+ * band of near-transparent haze (alpha 8 or less) 53px deep above the letters; a naive bounding box
+ * keeps it, and the logo then sits visibly low. Resize in premultiplied alpha, or every soft edge
+ * picks up a dark fringe from its transparent neighbours. The logo is stored 440px wide and the small
+ * logo 240px, both from the same source.
  */
 public final class Assets
 {
 	private static final String BRAND = "/rift/launcher/brand/";
 	private static final Map<String, Image> IMAGES = new HashMap<>();
-	private static final Map<String, Icon> ICONS = new HashMap<>();
 
 	private Assets()
 	{
@@ -49,24 +53,6 @@ public final class Assets
 	public static Image background()
 	{
 		return load("background.png");
-	}
-
-	/**
-	 * A navigation icon scaled to {@code size}, or {@code null} if that art is missing — callers then
-	 * fall back to {@link RiftIcons}, so navigation still works without the pack.
-	 */
-	public static Icon icon(String name, int size)
-	{
-		String key = name + "@" + size;
-		if (ICONS.containsKey(key))
-		{
-			return ICONS.get(key);
-		}
-		Image image = load("icons/" + name + ".png");
-		Icon icon = image == null ? null
-			: new ImageIcon(image.getScaledInstance(size, size, Image.SCALE_SMOOTH));
-		ICONS.put(key, icon);
-		return icon;
 	}
 
 	/**

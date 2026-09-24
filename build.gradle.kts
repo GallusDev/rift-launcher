@@ -53,6 +53,11 @@ dependencies {
         exclude("org.slf4j", "slf4j-api")
     }
     implementation("net.runelite:flatlaf:3.2.5-rl4")
+    // FlatSVGIcon, for the interface icons. Same RuneLite fork and version as flatlaf above, so the two
+    // never disagree about UI scaling; it brings JSVG, which is Java 8 bytecode and safe on the jlinked
+    // Java 11 runtime. Chosen over parsing the SVGs by hand because the art uses matrix transforms, a
+    // flipped Y axis, style inheritance and offset viewBoxes -- a renderer's job, not a launcher's.
+    implementation("net.runelite:flatlaf-extras:3.2.5-rl4")
 
     testImplementation("junit:junit:4.12")
     testImplementation("org.mockito:mockito-core:3.1.0")

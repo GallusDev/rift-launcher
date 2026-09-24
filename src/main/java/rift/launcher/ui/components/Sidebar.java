@@ -1,6 +1,7 @@
 package rift.launcher.ui.components;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -19,8 +21,8 @@ import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import rift.launcher.ui.theme.Assets;
-import rift.launcher.ui.theme.RiftIcons;
 import rift.launcher.ui.theme.RiftTheme;
+import rift.launcher.ui.theme.SvgIcons;
 
 /**
  * The left rail: brand mark, navigation, and the signed-in user.
@@ -31,6 +33,9 @@ import rift.launcher.ui.theme.RiftTheme;
  */
 public class Sidebar extends JPanel
 {
+	private static final int NAV_ICON = 22;
+	private static final int AVATAR = 40;
+
 	private final Map<String, NavButton> buttons = new LinkedHashMap<>();
 	private final JLabel userName = new JLabel("Not signed in");
 	private final JLabel userState = new JLabel("Offline");
@@ -109,9 +114,7 @@ public class Sidebar extends JPanel
 		row.setOpaque(false);
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, 48));
 
-		Icon profile = Assets.icon("profile", 40);
-		avatar.setIcon(profile != null ? profile
-			: RiftIcons.of(RiftIcons.Kind.HOME, 40, RiftTheme.ACCENT));
+		avatar.setIcon(avatarFor(false));
 		row.add(avatar, BorderLayout.WEST);
 
 		JPanel names = new JPanel();
@@ -145,22 +148,38 @@ public class Sidebar extends JPanel
 		return block;
 	}
 
-	private static Icon iconFor(String page)
+	/**
+	 * The page's glyph in whatever colour the button's state calls for, or null for a page with no
+	 * art. Matched by name rather than guessed from a prefix: a page that has no icon should show
+	 * none, not borrow a neighbour's and imply it is something it is not.
+	 */
+	private static Function<Color, Icon> iconFor(String page)
 	{
-		String key = page.toLowerCase();
-		// Proxies has no art of its own; the changelog mark reads as "a list of entries", which is
-		// closer than reusing the gear that already means Settings.
-		Icon art = Assets.icon(key.startsWith("prox") ? "changelog" : key, 26);
-		if (art != null)
+		SvgIcons.Glyph glyph;
+		switch (page.toLowerCase())
 		{
-			return art;
+			case "home":
+				glyph = SvgIcons.Glyph.HOME;
+				break;
+			case "proxies":
+				glyph = SvgIcons.Glyph.PROXIES;
+				break;
+			case "plugins":
+				glyph = SvgIcons.Glyph.PLUGINS;
+				break;
+			case "settings":
+				glyph = SvgIcons.Glyph.SETTINGS;
+				break;
+			default:
+				return null;
 		}
-		// The pack may not cover every page; the drawn set fills the gaps so nav never looks broken.
-		RiftIcons.Kind kind = key.startsWith("home") ? RiftIcons.Kind.HOME
-			: key.startsWith("prox") ? RiftIcons.Kind.PROXY
-			: key.startsWith("set") ? RiftIcons.Kind.SETTINGS
-			: RiftIcons.Kind.CHANGELOG;
-		return RiftIcons.of(kind, 22, RiftTheme.TEXT_MUTED);
+		return color -> SvgIcons.of(glyph, NAV_ICON, color);
+	}
+
+	/** Bright when signed in and dim when not, so the avatar agrees with the Online/Offline line. */
+	private static Icon avatarFor(boolean signedIn)
+	{
+		return SvgIcons.of(SvgIcons.Glyph.USER, AVATAR, signedIn ? RiftTheme.ACCENT_BRIGHT : RiftTheme.TEXT_FAINT);
 	}
 
 	public void setSelected(String page)
@@ -179,6 +198,7 @@ public class Sidebar extends JPanel
 		userName.setForeground(signedIn ? RiftTheme.TEXT : RiftTheme.TEXT_MUTED);
 		userState.setText(signedIn ? "Online" : "Offline");
 		userState.setForeground(signedIn ? RiftTheme.OK : RiftTheme.TEXT_FAINT);
+		avatar.setIcon(avatarFor(signedIn));
 		authButton.setText(signedIn ? "Sign out" : "Sign in");
 	}
 

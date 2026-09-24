@@ -9,11 +9,13 @@ import java.awt.RenderingHints;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.GeneralPath;
 import java.awt.geom.Path2D;
-import java.awt.geom.RoundRectangle2D;
 import javax.swing.Icon;
 
 /**
- * Interface icons drawn as vectors rather than shipped as images.
+ * Small interface icons drawn as vectors rather than shipped as images.
+ *
+ * <p>The navigation and avatar icons are not here: they are SVG art, rendered by {@link SvgIcons}.
+ * What remains are the incidental marks that have no art of their own, such as the Launch button's.
  *
  * <p>Drawn because these need to recolour with state (idle, hover, selected) and stay crisp on any
  * display scaling. A PNG would need one file per colour per size; a path needs neither, and the
@@ -23,7 +25,7 @@ public final class RiftIcons
 {
 	public enum Kind
 	{
-		HOME, SETTINGS, CHANGELOG, PROXY, ROCKET, PLUS, DOTS, CLOCK, PLAY, CHECK
+		ROCKET, PLUS, DOTS, CLOCK, PLAY, CHECK
 	}
 
 	private RiftIcons()
@@ -80,55 +82,6 @@ public final class RiftIcons
 		{
 			switch (kind)
 			{
-				case HOME:
-				{
-					GeneralPath p = new GeneralPath();
-					p.moveTo(3, 10);
-					p.lineTo(12, 3);
-					p.lineTo(21, 10);
-					p.lineTo(21, 20);
-					p.lineTo(3, 20);
-					p.closePath();
-					g.draw(p);
-					g.draw(new java.awt.geom.Line2D.Double(9.5, 20, 9.5, 14));
-					g.draw(new java.awt.geom.Line2D.Double(14.5, 20, 14.5, 14));
-					g.draw(new java.awt.geom.Line2D.Double(9.5, 14, 14.5, 14));
-					break;
-				}
-				case SETTINGS:
-				{
-					g.draw(new Ellipse2D.Double(9, 9, 6, 6));
-					// Eight teeth around the hub reads as a gear without fiddly geometry.
-					for (int i = 0; i < 8; i++)
-					{
-						double a = Math.PI * i / 4;
-						double x1 = 12 + Math.cos(a) * 7.5;
-						double y1 = 12 + Math.sin(a) * 7.5;
-						double x2 = 12 + Math.cos(a) * 10;
-						double y2 = 12 + Math.sin(a) * 10;
-						g.draw(new java.awt.geom.Line2D.Double(x1, y1, x2, y2));
-					}
-					break;
-				}
-				case CHANGELOG:
-				{
-					g.draw(new RoundRectangle2D.Double(5, 3, 14, 18, 2, 2));
-					g.draw(new java.awt.geom.Line2D.Double(8.5, 8, 15.5, 8));
-					g.draw(new java.awt.geom.Line2D.Double(8.5, 12, 15.5, 12));
-					g.draw(new java.awt.geom.Line2D.Double(8.5, 16, 13, 16));
-					break;
-				}
-				case PROXY:
-				{
-					// Two nodes with a hop between them -- traffic taking the long way round.
-					g.draw(new Ellipse2D.Double(3, 14, 6, 6));
-					g.draw(new Ellipse2D.Double(15, 14, 6, 6));
-					GeneralPath p = new GeneralPath();
-					p.moveTo(6, 14);
-					p.curveTo(6, 5, 18, 5, 18, 14);
-					g.draw(p);
-					break;
-				}
 				case ROCKET:
 				{
 					GeneralPath p = new GeneralPath();

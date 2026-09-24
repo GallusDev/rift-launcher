@@ -6,7 +6,6 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -17,9 +16,9 @@ import javax.swing.ImageIcon;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import rift.launcher.account.Account;
-import rift.launcher.ui.theme.Assets;
 import rift.launcher.ui.theme.RiftIcons;
 import rift.launcher.ui.theme.RiftTheme;
+import rift.launcher.ui.theme.SvgIcons;
 
 /**
  * One account, as a card: avatar, name, live status, session age, and its own Launch button.
@@ -44,17 +43,8 @@ public class ClientCard extends JPanel
 		setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
 
 		// Avatar
-		JLabel avatar = new JLabel();
-		Image profile = null;
-		javax.swing.Icon icon = Assets.icon("profile", 44);
-		if (icon != null)
-		{
-			avatar.setIcon(icon);
-		}
-		else
-		{
-			avatar.setIcon(RiftIcons.of(RiftIcons.Kind.HOME, 44, RiftTheme.ACCENT));
-		}
+		JLabel avatar = new JLabel(SvgIcons.of(SvgIcons.Glyph.USER, 40, RiftTheme.ACCENT_BRIGHT));
+		avatar.setHorizontalAlignment(JLabel.CENTER);
 		avatar.setPreferredSize(new Dimension(48, 48));
 		add(avatar, BorderLayout.WEST);
 

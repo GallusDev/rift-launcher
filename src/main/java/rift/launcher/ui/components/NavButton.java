@@ -9,6 +9,7 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.function.Function;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import rift.launcher.ui.theme.RiftTheme;
@@ -18,17 +19,19 @@ import rift.launcher.ui.theme.RiftTheme;
  *
  * <p>Selection is shown three ways at once — a filled panel, an accent bar on the leading edge, and
  * brighter text — because in a dark UI any one of them alone is easy to miss, and "which screen am I
- * on?" should never need a second look.
+ * on?" should never need a second look. The icon follows the same states, and takes the accent colour
+ * when selected so it reads as part of the accent bar rather than a separate mark.
  */
 public class NavButton extends JComponent
 {
 	private final String label;
-	private final Icon icon;
+	/** The icon in a given colour; asked afresh each paint so it can follow hover and selection. */
+	private final Function<Color, Icon> icon;
 	private final Runnable onClick;
 	private boolean selected;
 	private boolean hovered;
 
-	public NavButton(String label, Icon icon, Runnable onClick)
+	public NavButton(String label, Function<Color, Icon> icon, Runnable onClick)
 	{
 		this.label = label;
 		this.icon = icon;
@@ -104,16 +107,18 @@ public class NavButton extends JComponent
 		}
 
 		int iconX = 16;
-		if (icon != null)
+		Color iconColor = selected ? RiftTheme.ACCENT_BRIGHT : hovered ? RiftTheme.TEXT : RiftTheme.TEXT_MUTED;
+		Icon painted = icon == null ? null : icon.apply(iconColor);
+		if (painted != null)
 		{
-			icon.paintIcon(this, g, iconX, (h - icon.getIconHeight()) / 2);
+			painted.paintIcon(this, g, iconX, (h - painted.getIconHeight()) / 2);
 		}
 
 		Color textColor = selected ? RiftTheme.TEXT : hovered ? RiftTheme.TEXT : RiftTheme.TEXT_MUTED;
 		g.setColor(textColor);
 		g.setFont(getFont());
 		FontMetrics fm = g.getFontMetrics();
-		int textX = iconX + (icon == null ? 0 : icon.getIconWidth() + 14);
+		int textX = iconX + (painted == null ? 0 : painted.getIconWidth() + 14);
 		g.drawString(label, textX, (h + fm.getAscent() - fm.getDescent()) / 2);
 		g.dispose();
 	}
