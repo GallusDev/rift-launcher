@@ -1000,10 +1000,7 @@ public class RiftLauncher
 		try
 		{
 			Account imported = AccountImporter.fromEnvironment(System.getenv(), System.currentTimeMillis());
-			List<Account> accounts = store.load();
-			accounts.removeIf(a -> a.getCharacterId().equals(imported.getCharacterId()));
-			accounts.add(imported);
-			store.save(accounts);
+			store.save(AccountImporter.merge(store.load(), imported));
 			log.info("Imported Jagex session for character {}", imported.getCharacterId());
 		}
 		catch (Exception ex)
@@ -1042,13 +1039,27 @@ public class RiftLauncher
 			RUNNING_CLIENTS.incrementAndGet();
 			try
 			{
+				LaunchHandoff.ProxyConfig proxy;
+				try
+				{
+					proxy = proxyFor(account);
+				}
+				catch (IllegalStateException ex)
+				{
+					// A refusal, not a failure: the account's proxy was deleted, and launching anyway would
+					// connect from the real IP. Say so -- the generic message below would send the user off
+					// to refresh a Jagex session that is perfectly fine.
+					frame.setAccountStatus(characterId, "Ready");
+					frame.setStatus(account.getDisplayName() + "'s proxy was deleted - launch refused so it "
+						+ "does not connect from your real IP");
+					return;
+				}
 				JxCredentials creds = credentialsFor(account);
 				File javaw = new File(System.getProperty("java.home"), "bin/javaw.exe");
 				// Gate developer mode per launch: the key is re-verified here, so revoking it takes
 				// effect on the next launch rather than whenever the launcher happens to restart.
 				boolean developerMode = developerModeForLaunch(frame);
-				Process process = launchWithSession(clientLauncher, creds, javaw, developerMode,
-					proxyFor(account));
+				Process process = launchWithSession(clientLauncher, creds, javaw, developerMode, proxy);
 				frame.setAccountStatus(characterId, developerMode ? "Playing (dev)" : "Playing");
 				process.waitFor();
 				frame.setAccountStatus(characterId, "Ready");
@@ -1095,6 +1106,7 @@ public class RiftLauncher
 	private static Process launchWithSession(ClientLauncher clientLauncher, JxCredentials creds, File javaw,
 		boolean developerMode, LaunchHandoff.ProxyConfig proxy) throws Exception
 	{
+		Session session = null;
 		if (SESSION.get() != null)
 		{
 			try
@@ -1103,10 +1115,7 @@ public class RiftLauncher
 				if (fresh != null)
 				{
 					SESSION.set(fresh);
-					String handoff = new LaunchHandoff(fresh.getAccessToken(), fresh.getRefreshToken(),
-						fresh.getExpiresAt(), RiftConfig.apiBaseUrl(), RiftConfig.SUPABASE_ANON_KEY,
-						RiftConfig.SUPABASE_URL, developerMode).toJson();
-					return clientLauncher.launch(creds, handoff, javaw, CLIENT_JAR);
+					session = fresh;
 				}
 			}
 			catch (Exception ex)
@@ -1116,17 +1125,45 @@ public class RiftLauncher
 			}
 		}
 
-		// No session, or it could not be refreshed. Developer mode still has to reach the client, and
-		// it travels only in the handoff -- so send one carrying the flag and no tokens rather than
-		// falling through to a plain launch, which silently discarded it. Managed plugins are already
-		// unavailable in this state; local developer plugins need not be.
-		if (developerMode)
+		LaunchHandoff handoff = handoffFor(session, developerMode, proxy);
+		if (handoff == null)
 		{
-			String handoff = new LaunchHandoff(null, null, 0L, RiftConfig.apiBaseUrl(),
-				RiftConfig.SUPABASE_ANON_KEY, RiftConfig.SUPABASE_URL, true).toJson();
-			log.info("Launching with a developer-only handoff (no Rift session)");
-			return clientLauncher.launch(creds, handoff, javaw, CLIENT_JAR);
+			return clientLauncher.launch(creds, javaw, CLIENT_JAR);
 		}
-		return clientLauncher.launch(creds, javaw, CLIENT_JAR);
+		if (session == null)
+		{
+			// What it carries, never the proxy's address: the log file is not the place for it.
+			log.info("Launching with a handoff but no Rift session ({}{})", developerMode ? "developer mode" : "",
+				proxy == null ? "" : developerMode ? " + proxy" : "proxy");
+		}
+		return clientLauncher.launch(creds, handoff.toJson(), javaw, CLIENT_JAR);
+	}
+
+	/**
+	 * The handoff a launch needs, or null when a plain launch is right.
+	 *
+	 * <p>A session, developer mode and a proxy each reach the client only through the handoff, so any
+	 * one of them means sending one. The proxy is the one this used to forget: launchWithSession took
+	 * it as a parameter and never read it, so every launch, signed in or not, connected directly from
+	 * the user's real IP -- the very outcome proxyFor refuses a launch to prevent when an assigned
+	 * proxy has been deleted. Signed out it was worse, because no handoff was sent at all.
+	 *
+	 * <p>Without a session the handoff carries no tokens, only whatever applies: the developer flag,
+	 * the proxy, or both. The client accepts any of the three on its own.
+	 */
+	static LaunchHandoff handoffFor(Session session, boolean developerMode, LaunchHandoff.ProxyConfig proxy)
+	{
+		if (session != null)
+		{
+			return new LaunchHandoff(session.getAccessToken(), session.getRefreshToken(),
+				session.getExpiresAt(), RiftConfig.apiBaseUrl(), RiftConfig.SUPABASE_ANON_KEY,
+				RiftConfig.SUPABASE_URL, developerMode, proxy);
+		}
+		if (developerMode || proxy != null)
+		{
+			return new LaunchHandoff(null, null, 0L, RiftConfig.apiBaseUrl(),
+				RiftConfig.SUPABASE_ANON_KEY, RiftConfig.SUPABASE_URL, developerMode, proxy);
+		}
+		return null;
 	}
 }
