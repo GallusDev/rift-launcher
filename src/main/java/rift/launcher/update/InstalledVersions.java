@@ -12,9 +12,11 @@ import java.nio.file.Files;
 /**
  * What is currently installed, recorded at {@code ~/.rift/versions.json}.
  *
- * <p>Needed because neither artefact can be asked its own Rift version: the client jar reports
- * RuneLite's version (1.12.35), not Rift's, and the launcher jar has no version resource at runtime.
- * Rather than inferring, the updater writes down what it installed.
+ * <p>Needed because neither artefact can be asked its own Rift version: the client jar reports the
+ * RuneLite release it is forked from, not Rift's version, and the launcher jar has no version
+ * resource at runtime. Rather than inferring, the updater writes down what it installed.
+ * (No RuneLite release is named here on purpose -- the example was pinned to 1.12.35 and went stale
+ * twice while the fork moved on.)
  *
  * <p>An absent or unreadable file means "unknown", which the updater treats as "assume current" — a
  * missing record must never trigger a download loop on every start.
