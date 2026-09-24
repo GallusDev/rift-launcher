@@ -18,6 +18,7 @@ import java.net.URL;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -49,6 +50,7 @@ import rift.launcher.proxy.ProxyEntry;
 import rift.launcher.ui.components.ClientCard;
 import rift.launcher.ui.components.PluginCard;
 import rift.launcher.ui.components.PrimaryButton;
+import rift.launcher.ui.components.ProxyChoice;
 import rift.launcher.ui.components.SectionCard;
 import rift.launcher.ui.components.Sidebar;
 import rift.launcher.ui.components.ThemedInput;
@@ -87,6 +89,16 @@ public class LauncherFrame extends JFrame
 	// Home
 	private final JPanel clientList = new JPanel();
 	private final Map<String, ClientCard> clientCards = new LinkedHashMap<>();
+	/**
+	 * Each account's last status ("Launching...", "Playing"), by character id.
+	 *
+	 * <p>Cards are rebuilt whenever accounts or proxies change, and a new card starts "Ready". Without
+	 * this, assigning a proxy while a client was running reset its card to Ready and re-enabled its
+	 * Launch button -- an open invitation to launch the same account twice.
+	 */
+	private final Map<String, String> accountStatuses = new HashMap<>();
+	/** The configured proxies, for each account card's dropdown. */
+	private final List<ProxyEntry> proxies = new ArrayList<>();
 	private final List<Account> accounts = new ArrayList<>();
 	private final JLabel welcome = new JLabel("Welcome to Rift");
 	private final JLabel emptyState =
@@ -317,7 +329,14 @@ public class LauncherFrame extends JFrame
 		{
 			ClientCard card = new ClientCard(account,
 				AccountAge.format(System.currentTimeMillis() - account.getAddedAt()),
-				() -> onLaunch.accept(account));
+				() -> onLaunch.accept(account),
+				ProxyChoice.forAccount(proxies, account.getProxyId()),
+				proxyId -> onAssignProxy.accept(account, proxyId));
+			String status = accountStatuses.get(account.getCharacterId());
+			if (status != null)
+			{
+				card.setStatus(status);
+			}
 			clientCards.put(account.getCharacterId(), card);
 			clientList.add(card);
 			clientList.add(Box.createVerticalStrut(10));
@@ -567,6 +586,11 @@ private JPanel buildProxiesTab()
 			proxyModel.setProxies(proxies);
 			proxyStatus.setText(proxies.isEmpty()
 				? "No proxies configured" : proxies.size() + " configured");
+			// The account cards' dropdowns list these too, with each one's last test result, so an
+			// added, deleted or re-tested proxy has to reach them.
+			this.proxies.clear();
+			this.proxies.addAll(proxies);
+			rebuildClientCards();
 		});
 	}
 
@@ -1097,6 +1121,7 @@ private JPanel buildProxiesTab()
 	{
 		SwingUtilities.invokeLater(() ->
 		{
+			accountStatuses.put(characterId, accountStatus);
 			ClientCard card = clientCards.get(characterId);
 			if (card != null)
 			{

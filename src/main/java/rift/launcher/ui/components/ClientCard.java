@@ -4,11 +4,15 @@ import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.GridBagConstraints;
+import java.awt.GridBagLayout;
+import java.awt.Insets;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.util.function.Consumer;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
@@ -33,9 +37,15 @@ public class ClientCard extends JPanel
 	private final StatusBadge badge = new StatusBadge("Ready", RiftTheme.OK);
 	private final JLabel meta = new JLabel();
 	private final PrimaryButton launch;
+	private final ProxyPicker proxy;
 	private boolean hovered;
 
-	public ClientCard(Account account, String sessionAge, Runnable onLaunch)
+	/**
+	 * @param proxyOptions  the proxies this account can be assigned, and which it currently is
+	 * @param onAssignProxy called with the chosen proxy id, or null for a direct connection
+	 */
+	public ClientCard(Account account, String sessionAge, Runnable onLaunch, ProxyChoice.Options proxyOptions,
+		Consumer<String> onAssignProxy)
 	{
 		this.account = account;
 		setLayout(new BorderLayout(14, 0));
@@ -77,9 +87,19 @@ public class ClientCard extends JPanel
 		launch = new PrimaryButton("Launch",
 			RiftIcons.of(RiftIcons.Kind.ROCKET, 16, RiftTheme.TEXT), true);
 		launch.addActionListener(e -> onLaunch.run());
-		JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+
+		// Beside Launch because it is the thing that decides how Launch connects.
+		proxy = new ProxyPicker(proxyOptions, account.getProxyId(), onAssignProxy);
+
+		// GridBag rather than a FlowLayout: it centres both on the card's vertical middle, where a
+		// FlowLayout would top-align two controls of different heights.
+		JPanel right = new JPanel(new GridBagLayout());
 		right.setOpaque(false);
-		right.add(launch);
+		GridBagConstraints c = new GridBagConstraints();
+		c.insets = new Insets(0, 0, 0, 10);
+		right.add(proxy, c);
+		c.insets = new Insets(0, 0, 0, 0);
+		right.add(launch, c);
 		add(right, BorderLayout.EAST);
 
 		MouseAdapter hover = new MouseAdapter()
@@ -111,6 +131,12 @@ public class ClientCard extends JPanel
 		return account;
 	}
 
+	/** For tests. */
+	ProxyPicker proxyPicker()
+	{
+		return proxy;
+	}
+
 	/** Reflects launch state: the button locks while a client is starting, so it can't be double-run. */
 	public void setStatus(String status)
 	{
@@ -126,6 +152,10 @@ public class ClientCard extends JPanel
 		}
 		badge.set(value, color);
 		launch.setEnabled(!value.toLowerCase().contains("launch"));
+		// Locked while a client is starting or running: the proxy is handed over at launch, so a change
+		// now would only look as though it applied to the session in front of you.
+		String lower = value.toLowerCase();
+		proxy.setEnabled(!lower.contains("launch") && !lower.contains("playing"));
 	}
 
 	public void setSessionAge(String age)

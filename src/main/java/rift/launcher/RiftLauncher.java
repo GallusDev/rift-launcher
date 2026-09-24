@@ -960,10 +960,24 @@ public class RiftLauncher
 			}
 			store.save(accounts);
 			frame.setAccounts(accounts);
+			ProxyEntry chosen = proxyId == null ? null : PROXIES.byId(proxyId);
+			frame.setStatus(account.getDisplayName() + (chosen == null ? " will connect directly"
+				: " will connect through " + chosen.getNickname()) + " from its next launch");
 		}
 		catch (Exception ex)
 		{
 			log.warn("Rift: could not save the proxy assignment ({})", ex.getClass().getSimpleName());
+			// Put the dropdown back to what is actually stored. Leaving it on a choice that was never
+			// saved is how someone launches through an address they believe they switched away from.
+			try
+			{
+				frame.setAccounts(store.load());
+			}
+			catch (Exception reload)
+			{
+				log.warn("Rift: could not reload accounts ({})", reload.getClass().getSimpleName());
+			}
+			frame.setStatus("Could not save the proxy for " + account.getDisplayName() + " - nothing changed");
 		}
 	}
 
