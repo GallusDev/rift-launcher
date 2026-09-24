@@ -3,12 +3,15 @@ package rift.launcher.web;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * The launcher's client for the Rift website API. The launcher only needs the license gate; plugin
- * resolve + artifact fetch happen on the game client side. HTTP goes through the injected {@link Http}
+ * The launcher's client for the Rift website API. The launcher needs the license gate and a list of
+ * the account's plugins to show; plugin resolve + artifact fetch happen on the game client side. HTTP goes through the injected {@link Http}
  * seam so this is unit-testable without a network.
  */
 public final class RiftApiClient
@@ -129,6 +132,47 @@ public final class RiftApiClient
 			throw toApiException(reply);
 		}
 		return reply.body();
+	}
+
+	/**
+	 * {@code GET /api/v1/me/plugins} (Bearer) → the plugins this account can use right now.
+	 *
+	 * <p>The server has already dropped expired entitlements and unpublished plugins, so everything
+	 * returned is usable; the caller only has to present it. Active trials are included alongside
+	 * purchases, marked by their entitlement source.
+	 */
+	public List<OwnedPlugin> myPlugins(String accessToken) throws IOException, ApiException
+	{
+		Map<String, String> headers = new HashMap<>();
+		headers.put("Authorization", "Bearer " + accessToken);
+
+		Http.Reply reply = http.send("GET", baseUrl + "/api/v1/me/plugins", headers, null);
+		if (reply.status() / 100 != 2)
+		{
+			throw toApiException(reply);
+		}
+		MyPlugins body = GSON.fromJson(reply.text(), MyPlugins.class);
+		if (body == null || body.plugins == null)
+		{
+			return Collections.emptyList();
+		}
+		// A null element is a malformed entry, not a plugin; dropping it keeps one bad row from
+		// taking the whole list down with a NullPointerException in the UI.
+		List<OwnedPlugin> plugins = new ArrayList<>();
+		for (OwnedPlugin p : body.plugins)
+		{
+			if (p != null && p.getSlug() != null)
+			{
+				plugins.add(p);
+			}
+		}
+		return plugins;
+	}
+
+	/** The {@code /me/plugins} envelope. */
+	private static final class MyPlugins
+	{
+		private List<OwnedPlugin> plugins;
 	}
 
 	static ApiException toApiException(Http.Reply reply)

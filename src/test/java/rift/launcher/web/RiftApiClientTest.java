@@ -109,4 +109,71 @@ public class RiftApiClientTest
 
 		assertFalse(new RiftApiClient(BASE, http).licenseCheck("JWT").isDeveloper());
 	}
+
+	@Test
+	public void myPluginsGetsWithBearerAndReadsTheEntitlementTerms() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		// The live route's shape: terms live under "entitlement", and trials always carry a null expiry.
+		http.reply = "{\"plugins\":["
+			+ "{\"slug\":\"rift-combat\",\"name\":\"Rift Combat\",\"enabled\":true,"
+			+ "\"entitlement\":{\"expires_at\":\"2026-10-24T12:00:00+00:00\",\"source\":\"purchase\"},"
+			+ "\"version\":\"1.4.0\",\"version_id\":\"v1\",\"protected\":true,"
+			+ "\"artifact\":{\"key\":\"/api/v1/artifact?plugin_version=v1\"}},"
+			+ "{\"slug\":\"rift-toa\",\"name\":\"Rift ToA\",\"enabled\":true,"
+			+ "\"entitlement\":{\"expires_at\":null,\"source\":\"trial\"}}"
+			+ "]}";
+		RiftApiClient api = new RiftApiClient(BASE, http);
+
+		java.util.List<OwnedPlugin> plugins = api.myPlugins("JWT-123");
+
+		assertEquals("GET", http.method);
+		assertEquals(BASE + "/api/v1/me/plugins", http.url);
+		assertEquals("Bearer JWT-123", http.headers.get("Authorization"));
+		assertEquals(2, plugins.size());
+		assertEquals("Rift Combat", plugins.get(0).getName());
+		assertEquals("2026-10-24T12:00:00+00:00", plugins.get(0).getExpiresAt());
+		assertFalse(plugins.get(0).isTrial());
+		assertTrue(plugins.get(1).isTrial());
+		assertNull(plugins.get(1).getExpiresAt());
+	}
+
+	@Test
+	public void myPluginsDropsMalformedEntriesRatherThanFailingTheList() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.reply = "{\"plugins\":[null,{\"name\":\"no slug\"},{\"slug\":\"ok\"}]}";
+
+		java.util.List<OwnedPlugin> plugins = new RiftApiClient(BASE, http).myPlugins("JWT");
+
+		assertEquals(1, plugins.size());
+		assertEquals("a nameless entry falls back to its slug", "ok", plugins.get(0).getName());
+		assertNull("no entitlement object is no terms, not a crash", plugins.get(0).getExpiresAt());
+	}
+
+	@Test
+	public void myPluginsWithNoListIsEmpty() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.reply = "{}";
+		assertTrue(new RiftApiClient(BASE, http).myPlugins("JWT").isEmpty());
+	}
+
+	@Test
+	public void myPluginsSurfacesAnHttpErrorWithItsStatus() throws Exception
+	{
+		StubHttp http = new StubHttp();
+		http.status = 401;
+		http.reply = "{\"error\":{\"code\":\"unauthorized\",\"message\":\"Bearer token required\"}}";
+		try
+		{
+			new RiftApiClient(BASE, http).myPlugins("stale");
+			fail("expected ApiException");
+		}
+		catch (ApiException ex)
+		{
+			assertEquals(401, ex.getStatus());
+			assertEquals("unauthorized", ex.getCode());
+		}
+	}
 }

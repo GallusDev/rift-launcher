@@ -13,11 +13,15 @@ import java.awt.Image;
 import java.awt.RenderingHints;
 import java.awt.Shape;
 import java.awt.geom.RoundRectangle2D;
+import java.io.File;
 import java.net.URL;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
@@ -43,6 +47,7 @@ import javax.swing.Timer;
 import rift.launcher.account.Account;
 import rift.launcher.proxy.ProxyEntry;
 import rift.launcher.ui.components.ClientCard;
+import rift.launcher.ui.components.PluginCard;
 import rift.launcher.ui.components.PrimaryButton;
 import rift.launcher.ui.components.SectionCard;
 import rift.launcher.ui.components.Sidebar;
@@ -52,6 +57,7 @@ import rift.launcher.ui.components.WindowChrome;
 import rift.launcher.ui.components.WindowControls;
 import rift.launcher.ui.theme.Assets;
 import rift.launcher.ui.theme.RiftTheme;
+import rift.launcher.web.OwnedPlugin;
 
 /**
  * The launcher window: a navigation rail on the left, a switchable content pane, and a status bar.
@@ -71,6 +77,7 @@ public class LauncherFrame extends JFrame
 
 	private static final String HOME = "Home";
 	private static final String PROXIES = "Proxies";
+	private static final String PLUGINS = "Plugins";
 	private static final String SETTINGS = "Settings";
 
 	private final CardLayout cards = new CardLayout();
@@ -137,6 +144,21 @@ public class LauncherFrame extends JFrame
 	 */
 	private Runnable onOfflineDevUnlock = () -> { };
 
+	// Plugins
+	private final JPanel pluginList = new JPanel();
+	private final JLabel pluginMessage = new JLabel();
+	/** The account's plugins for this session; null until a fetch has answered. */
+	private List<OwnedPlugin> ownedPlugins;
+	private String ownedPluginsError;
+	/**
+	 * Whether dev plugins would load if the client were launched now: a verified developer key, or
+	 * the offline unlock. Moved only by {@link #applyDeveloperAccess}, in lockstep with the
+	 * developer-mode checkbox, so the Plugins page can never list dev plugins the launch would skip.
+	 */
+	private boolean developerAccess;
+	private File devPluginsDir;
+	private Runnable onRefreshPlugins = () -> { };
+
 	public LauncherFrame(String version)
 	{
 		super("Rift Launcher - v" + version);
@@ -152,7 +174,7 @@ public class LauncherFrame extends JFrame
 		JPanel root = new BackgroundPanel();
 		root.setLayout(new BorderLayout());
 
-		sidebar = new Sidebar(version, Arrays.asList(HOME, PROXIES, SETTINGS), this::showPage, () ->
+		sidebar = new Sidebar(version, Arrays.asList(HOME, PROXIES, PLUGINS, SETTINGS), this::showPage, () ->
 		{
 			if (signedIn)
 			{
@@ -177,6 +199,7 @@ public class LauncherFrame extends JFrame
 		content.setOpaque(false);
 		content.add(buildHomePage(), HOME);
 		content.add(wrapPane(buildProxiesTab()), PROXIES);
+		content.add(wrapPane(buildPluginsTab()), PLUGINS);
 		content.add(wrapPane(buildSettingsTab()), SETTINGS);
 		contentArea.add(content, BorderLayout.CENTER);
 		root.add(contentArea, BorderLayout.CENTER);
@@ -203,6 +226,13 @@ public class LauncherFrame extends JFrame
 	{
 		cards.show(content, page);
 		sidebar.setSelected(page);
+		if (PLUGINS.equals(page))
+		{
+			// Fetched on arrival rather than once at sign-in, so a plugin bought on the website a
+			// minute ago is there the next time the page is opened, with no restart.
+			renderPlugins();
+			onRefreshPlugins.run();
+		}
 	}
 
 	/** Gives the reused Proxies/Settings panes the padding and transparency the new shell expects. */
@@ -545,6 +575,95 @@ private JPanel buildProxiesTab()
 		SwingUtilities.invokeLater(() -> proxyStatus.setText(text));
 	}
 
+	private JPanel buildPluginsTab()
+	{
+		pluginList.setLayout(new BoxLayout(pluginList, BoxLayout.Y_AXIS));
+		pluginList.setOpaque(false);
+
+		pluginMessage.setFont(RiftTheme.regular(13));
+		pluginMessage.setForeground(RiftTheme.TEXT_MUTED);
+
+		// For a purchase made while the page is already open; arriving on the page refreshes anyway.
+		PrimaryButton refresh = new PrimaryButton("Refresh", null, false);
+		refresh.addActionListener(e -> onRefreshPlugins.run());
+		JPanel actions = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
+		actions.setOpaque(false);
+		actions.add(refresh);
+
+		SectionCard card = new SectionCard("Plugins",
+			"What this account can use, and when access ends. Developer plugins are listed while developer access is active.");
+		card.add(actions);
+		card.gap(14);
+		card.add(pluginMessage);
+		card.gap(10);
+		card.add(pluginList);
+
+		JPanel tab = new JPanel(new BorderLayout());
+		tab.setOpaque(false);
+		tab.add(card, BorderLayout.NORTH);
+		renderPlugins();
+		return tab;
+	}
+
+	/**
+	 * Rebuilds the Plugins page from current state. EDT only.
+	 *
+	 * <p>Each source is gated here, at the point of display, rather than trusted to have been cleared
+	 * upstream: the account's plugins only while signed in, dev plugins only while developer access
+	 * holds. A late reply or a missed reset can then at worst leave stale data in a field, never on
+	 * screen.
+	 */
+	private void renderPlugins()
+	{
+		List<OwnedPlugin> owned = signedIn ? ownedPlugins : null;
+		List<PluginRows.DevJar> dev = developerAccess ? PluginRows.findDevJars(devPluginsDir)
+			: java.util.Collections.emptyList();
+
+		pluginList.removeAll();
+		List<PluginRows.Row> rows = PluginRows.build(owned, dev, Instant.now(), ZoneId.systemDefault(),
+			Locale.getDefault());
+		for (int i = 0; i < rows.size(); i++)
+		{
+			if (i > 0)
+			{
+				pluginList.add(Box.createVerticalStrut(8));
+			}
+			pluginList.add(new PluginCard(rows.get(i)));
+		}
+
+		List<String> lines = PluginRows.messages(signedIn, ownedPluginsError, owned, developerAccess,
+			dev.size(), devPluginsDir);
+		// HTML only to break lines; every line is escaped, because one of them carries a folder path.
+		StringBuilder html = new StringBuilder("<html>");
+		for (int i = 0; i < lines.size(); i++)
+		{
+			html.append(i > 0 ? "<br>" : "").append(escape(lines.get(i)));
+		}
+		pluginMessage.setText(html.append("</html>").toString());
+		pluginMessage.setVisible(!lines.isEmpty());
+
+		pluginList.revalidate();
+		pluginList.repaint();
+	}
+
+	private static String escape(String text)
+	{
+		return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
+	}
+
+	/**
+	 * Grants or withdraws developer access, and with it the developer-mode checkbox. EDT only.
+	 *
+	 * <p>The one place either moves, so the Plugins page's dev list and the checkbox that decides
+	 * whether dev plugins load cannot disagree.
+	 */
+	private void applyDeveloperAccess(boolean access)
+	{
+		developerAccess = access;
+		devModeBox.setEnabled(access);
+		renderPlugins();
+	}
+
 	private JPanel buildSettingsTab()
 	{
 		// --- Updates
@@ -771,7 +890,7 @@ private JPanel buildProxiesTab()
 		SwingUtilities.invokeLater(() ->
 		{
 			devPanel.setVisible(true);
-			devModeBox.setEnabled(true);
+			applyDeveloperAccess(true);
 			devModeBox.setSelected(true);
 			devStatusLabel.setText("Offline developer unlock active (" + username + ")");
 		});
@@ -837,7 +956,7 @@ private JPanel buildProxiesTab()
 			if (!visible)
 			{
 				devModeBox.setSelected(false);
-				devModeBox.setEnabled(false);
+				applyDeveloperAccess(false);
 			}
 		});
 	}
@@ -854,7 +973,7 @@ private JPanel buildProxiesTab()
 	{
 		SwingUtilities.invokeLater(() ->
 		{
-			devModeBox.setEnabled(valid);
+			applyDeveloperAccess(valid);
 			if (valid)
 			{
 				devKeyField.setText("");
@@ -881,6 +1000,55 @@ private JPanel buildProxiesTab()
 		});
 	}
 
+	/** Where the client loads dev plugins from, so the Plugins page lists exactly those jars. */
+	public void setDevPluginsDir(File dir)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			devPluginsDir = dir;
+			renderPlugins();
+		});
+	}
+
+	/** Run when the Plugins page wants fresh data: on arrival, and on Refresh. */
+	public void setOnRefreshPlugins(Runnable onRefreshPlugins)
+	{
+		this.onRefreshPlugins = onRefreshPlugins;
+	}
+
+	/**
+	 * A fetch has started. Clears any earlier error, so the page shows "loading" if it has nothing yet
+	 * and simply keeps the list it has if it does -- a refresh should not blank a list that is there.
+	 */
+	public void setOwnedPluginsLoading()
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			ownedPluginsError = null;
+			renderPlugins();
+		});
+	}
+
+	public void setOwnedPlugins(List<OwnedPlugin> plugins)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			ownedPlugins = plugins;
+			ownedPluginsError = null;
+			renderPlugins();
+		});
+	}
+
+	/** A fetch failed. Any list already on screen stays, under the message, as the last known state. */
+	public void setOwnedPluginsError(String message)
+	{
+		SwingUtilities.invokeLater(() ->
+		{
+			ownedPluginsError = message;
+			renderPlugins();
+		});
+	}
+
 	/** Updates the account bar: a non-null name shows "signed in as ..." + a Sign-out button. */
 	public void setRiftAccount(String userName)
 	{
@@ -888,6 +1056,10 @@ private JPanel buildProxiesTab()
 		{
 			signedIn = userName != null;
 			sidebar.setUser(userName);
+			// Whatever was fetched belonged to the previous account, or to none; never show it to the
+			// next one. The page refetches for the new session.
+			ownedPlugins = null;
+			ownedPluginsError = null;
 			welcome.setText(signedIn ? "Welcome back, " + userName : "Welcome to Rift");
 
 			// Hide by default and stay hidden until the license check confirms this account is a
@@ -897,10 +1069,11 @@ private JPanel buildProxiesTab()
 			if (!signedIn)
 			{
 				devModeBox.setSelected(false);
-				devModeBox.setEnabled(false);
+				applyDeveloperAccess(false);
 				devKeyField.setText("");
 				devStatusLabel.setText("No developer key");
 			}
+			renderPlugins();
 		});
 	}
 

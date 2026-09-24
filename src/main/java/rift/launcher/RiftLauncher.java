@@ -24,6 +24,7 @@ import rift.launcher.ui.LauncherFrame;
 import rift.launcher.ui.components.RiftDialog;
 import rift.launcher.update.UpdateService;
 import rift.launcher.web.OfflineDevUnlock;
+import rift.launcher.web.OwnedPlugin;
 import rift.launcher.web.Release;
 import rift.launcher.web.ApiException;
 import rift.launcher.web.AuthFlow;
@@ -57,6 +58,13 @@ public class RiftLauncher
 	private static final AtomicReference<Session> SESSION = new AtomicReference<>();
 	private static final AtomicReference<License> LICENSE = new AtomicReference<>();
 	private static final AtomicInteger RUNNING_CLIENTS = new AtomicInteger();
+
+	/**
+	 * Generation of the Plugins page's fetch. A reply is shown only if no newer fetch has started and
+	 * no sign-out has happened since -- otherwise a slow reply for one account could land after the
+	 * next one signs in, and show them a list that is not theirs.
+	 */
+	private static final AtomicInteger PLUGINS_FETCH = new AtomicInteger();
 	private static final ScheduledExecutorService POLL =
 		Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "rift-license-poll"));
 	private static volatile boolean banned;
@@ -141,6 +149,8 @@ public class RiftLauncher
 			frame.setProxies(PROXIES.load());
 			frame.setOnRepairJagex(() -> repairJagex(frame));
 			frame.setOnRemoveJagex(() -> removeJagex(frame));
+			frame.setDevPluginsDir(new File(RIFT_DIR, "dev-plugins"));
+			frame.setOnRefreshPlugins(() -> refreshPlugins(frame));
 			frame.setAccounts(store.load());
 			frame.setVisible(true);
 
@@ -204,6 +214,55 @@ public class RiftLauncher
 		}
 	}
 
+	/**
+	 * Fetches the signed-in account's plugins for the Plugins page, off the EDT.
+	 *
+	 * <p>Signed out, there is nothing to fetch: the page says so from its own signed-in state, and dev
+	 * plugins need no network at all. A failure keeps whatever list is already shown and says why,
+	 * rather than blanking it.
+	 */
+	private static void refreshPlugins(LauncherFrame frame)
+	{
+		int fetch = PLUGINS_FETCH.incrementAndGet();
+		Session session = SESSION.get();
+		if (session == null)
+		{
+			return;
+		}
+		frame.setOwnedPluginsLoading();
+		new Thread(() ->
+		{
+			try
+			{
+				List<OwnedPlugin> owned = API.myPlugins(session.getAccessToken());
+				if (fetch == PLUGINS_FETCH.get())
+				{
+					frame.setOwnedPlugins(owned);
+				}
+			}
+			catch (ApiException ex)
+			{
+				if (fetch == PLUGINS_FETCH.get())
+				{
+					// A 401 is an access token that aged out between license polls; the poll refreshes
+					// it within the minute, so this is a retry-shortly, not a sign-in-again.
+					frame.setOwnedPluginsError(ex.getStatus() == 401
+						? "Couldn't load your plugins - session is refreshing, try Refresh in a moment"
+						: "Couldn't load your plugins - Rift server error (" + ex.getStatus() + ")");
+				}
+				log.warn("Plugin list fetch rejected ({})", ex.getStatus());
+			}
+			catch (Exception ex)
+			{
+				if (fetch == PLUGINS_FETCH.get())
+				{
+					frame.setOwnedPluginsError("Couldn't load your plugins - Rift server unreachable");
+				}
+				log.warn("Plugin list fetch failed ({})", ex.getClass().getSimpleName());
+			}
+		}, "rift-plugins").start();
+	}
+
 	/** Periodic re-check: ban → close; token rejected + un-refreshable → sign out (session revoked). */
 	private static void pollLicense(LauncherFrame frame)
 	{
@@ -265,6 +324,7 @@ public class RiftLauncher
 		}
 		SESSION.set(null);
 		LICENSE.set(null);
+		PLUGINS_FETCH.incrementAndGet();
 		frame.setRiftAccount(null);
 		frame.setStatus("Session ended - sign in again");
 	}
@@ -327,6 +387,7 @@ public class RiftLauncher
 		AUTH_FLOW.signOut();
 		SESSION.set(null);
 		LICENSE.set(null);
+		PLUGINS_FETCH.incrementAndGet();
 		// Forget the developer key too. It is standalone auth that isn't bound to the Supabase session,
 		// so leaving it behind would let the next account signed in on this machine inherit developer
 		// mode. The developer re-enters it after signing back in.
@@ -352,6 +413,7 @@ public class RiftLauncher
 		dropOfflineUnlockIfAccountChanged();
 		String name = session.getUserName() == null ? "Rift account" : session.getUserName();
 		frame.setRiftAccount(name);
+		refreshPlugins(frame);
 
 		// Re-check any stored developer key now that we're signed in, so the developer section shows its
 		// true state (a key revoked since the last run reports as invalid instead of looking verified).
